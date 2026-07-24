@@ -299,8 +299,7 @@ function hideLockScreen() {
 
 // ===================== CODE INPUTS =====================
 function initCodeInputs() {
-    const inputs = document.querySelectorAll('.code-digit:not(.admin-login-digit)');
-
+    const inputs = document.querySelectorAll('.code-digit:not(.admin-login-digit):not(.settings-code-digit)');
     inputs.forEach((input, index) => {
         // Remove old listeners to avoid duplicates
         const newInput = input.cloneNode(true);
@@ -1016,6 +1015,43 @@ document.addEventListener('DOMContentLoaded', function() {
     
     updateSoundIcon();
     updatePushIcon();
+        // Init settings activation code inputs
+    const settingsInputs = document.querySelectorAll('.settings-code-digit');
+    settingsInputs.forEach((input, index) => {
+        input.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if (val.length === 1) {
+                e.target.classList.add('filled');
+                if (index < settingsInputs.length - 1) {
+                    settingsInputs[index + 1].focus();
+                }
+            } else if (val.length === 0) {
+                e.target.classList.remove('filled');
+            }
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                settingsInputs[index - 1].focus();
+                settingsInputs[index - 1].classList.remove('filled');
+            }
+            if (e.key === 'Enter') {
+                activateFromSettings();
+            }
+        });
+
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pasteData = e.clipboardData.getData('text').trim().toUpperCase();
+            if (pasteData.length === CODE_LENGTH) {
+                settingsInputs.forEach((inp, i) => {
+                    inp.value = pasteData[i] || '';
+                    if (pasteData[i]) inp.classList.add('filled');
+                });
+                settingsInputs[settingsInputs.length - 1].focus();
+            }
+        });
+    });
 });
 
 function checkServicesEmpty() {
@@ -1400,6 +1436,7 @@ function addCustomer(e) {
     const serviceId = parseInt(document.getElementById('customerService').value);
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
+    const deliveredPassword = document.getElementById('customerDeliveredPassword').value.trim();
     const notes = document.getElementById('customerNotes').value.trim();
     const phone = document.getElementById('customerPhone').value.trim();
     const deliveredEmail = document.getElementById('customerDeliveredEmail').value.trim();
@@ -1428,6 +1465,7 @@ function addCustomer(e) {
         notes,
         phone: phone || null,
         deliveredEmail: deliveredEmail || null,
+        deliveredPassword: deliveredPassword || null,
         status: 'active',
         addedAt: new Date().toISOString()
     };
@@ -1452,7 +1490,9 @@ function resetForm() {
     document.getElementById('endDate').value = '';
     document.getElementById('customerPrice').value = '';
     document.getElementById('customerPhone').value = '';
-    document.getElementById('customerDeliveredEmail').value = '';    currentStartDate = new Date();
+    document.getElementById('customerMessengerLink').value = '';
+    document.getElementById('readyMessage').value = '';
+    document.getElementById('customerDeliveredPassword').value = '';    currentStartDate = new Date();
     currentEndDate = new Date();
     renderCalendar('start', currentStartDate);
     renderCalendar('end', currentEndDate);
@@ -1733,9 +1773,13 @@ function renderDashboard() {
                                     <div class="customer-source">${getSourceIcon(c.source)} ${getSourceName(c.source)}</div>
                                 </div>
                             </div>
-                        </td>
-                        <td><span class="service-tag">${c.serviceIcon} ${c.serviceName}</span></td>
-                        <td>
+                            </td>
+                            <td>
+                                <span class="service-tag">${c.serviceIcon} ${c.serviceName}</span>
+                                ${c.deliveredEmail ? `<div style="font-size:12px;color:var(--primary);margin-top:4px;"><i class="fas fa-envelope" style="margin-left:4px;"></i>${c.deliveredEmail}</div>` : ''}
+                                ${c.deliveredPassword ? `<div style="font-size:12px;color:var(--warning);margin-top:2px;"><i class="fas fa-key" style="margin-left:4px;"></i>${c.deliveredPassword}</div>` : ''}
+                            </td>     
+                            <td>
                             ${formatDateArabic(new Date(c.endDate))}
                             ${daysLeft > 0 && st.status !== 'completed' ? '<br><span style="color: var(--gray); font-size: 12px;">(' + daysLeft + ' ' + (daysLeft === 1 ? 'يوم متبقي' : 'أيام متبقية') + ')</span>' : ''}
                             ${daysLeft === 0 && st.status !== 'completed' ? '<br><span style="color: var(--warning); font-size: 12px;">(ينتهي اليوم)</span>' : ''}
@@ -2183,16 +2227,16 @@ function updateBadges() {
 let notificationQueue = [];
 let dismissedNotificationIds = JSON.parse(localStorage.getItem('sub_dismissed_notifications') || '[]');
 let playedSoundIds = JSON.parse(localStorage.getItem('sub_played_sounds') || '[]');
-const NOTIFICATION_REPEAT_INTERVAL = 60000; // 1 minute repeat for non-dismissed
-const NOTIFICATION_AUTO_DISMISS = 8000; // 8 seconds auto-dismiss
-let notificationRepeatTimer = null;
+const NOTIFICATION_REPEAT_INTERVAL = 60000; // 1 minute repeat for expiring alerts
+const AUTO_DISMISS_MS = 5000; // 5 seconds auto-dismiss
+let repeatTimers = {};
 let autoDismissTimers = {};
 
 function showNotification(message, type = 'success', options = {}) {
     const notifId = options.id || ('notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
     
-    // If this notification was already dismissed, don't show it again
-    if (dismissedNotificationIds.includes(notifId)) {
+    // If this notification was permanently dismissed and NOT a repeat alert, don't show
+    if (dismissedNotificationIds.includes(notifId) && !options.repeat) {
         return;
     }
     
@@ -2202,13 +2246,13 @@ function showNotification(message, type = 'success', options = {}) {
         type: type,
         timestamp: Date.now(),
         options: options,
-        soundPlayed: playedSoundIds.includes(notifId) // Check if sound already played
+        soundPlayed: playedSoundIds.includes(notifId)
     };
     
     // Add to queue
     notificationQueue.push(notifData);
     
-    // If this is an expiring subscription alert, add it to repeat queue
+    // If this is an expiring subscription alert, set up repeating
     if (options.repeat && options.customerId) {
         scheduleRepeatNotification(notifData);
     }
@@ -2221,18 +2265,52 @@ function showNotification(message, type = 'success', options = {}) {
         playedSoundIds.push(notifId);
         localStorage.setItem('sub_played_sounds', JSON.stringify(playedSoundIds));
     }
+    
+    // Auto-dismiss after 5 seconds if user doesn't interact
+    scheduleAutoDismiss(notifData);
+}
+
+function scheduleAutoDismiss(notifData) {
+    // Clear existing timer for this notification
+    if (autoDismissTimers[notifData.id]) {
+        clearTimeout(autoDismissTimers[notifData.id]);
+    }
+    
+    autoDismissTimers[notifData.id] = setTimeout(() => {
+        // Check if still in queue (user didn't dismiss manually)
+        const stillInQueue = notificationQueue.some(n => n.id === notifData.id);
+        if (stillInQueue) {
+            // Remove from queue
+            notificationQueue = notificationQueue.filter(n => n.id !== notifData.id);
+            
+            // For NORMAL notifications (not repeat): mark as dismissed permanently so they never come back
+            if (!notifData.options.repeat) {
+                if (!dismissedNotificationIds.includes(notifData.id)) {
+                    dismissedNotificationIds.push(notifData.id);
+                    localStorage.setItem('sub_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
+                }
+            }
+            // For REPEAT notifications (expiring subscriptions): DON'T mark as dismissed
+            // so the repeat timer will bring them back after NOTIFICATION_REPEAT_INTERVAL
+            
+            renderNotificationStack();
+        }
+        delete autoDismissTimers[notifData.id];
+    }, AUTO_DISMISS_MS);
 }
 
 function renderNotificationStack() {
-    const panel = document.getElementById('notificationPanel');
     const stack = document.getElementById('notificationStack');
     const stackBody = document.getElementById('stackBody');
     const stackCount = document.getElementById('stackCount');
     
     if (!stack || !stackBody || !stackCount) return;
     
-    // Filter out dismissed notifications
-    const visibleQueue = notificationQueue.filter(n => !dismissedNotificationIds.includes(n.id));
+    // Filter out dismissed non-repeat notifications
+    const visibleQueue = notificationQueue.filter(n => {
+        if (n.options.repeat) return true; // repeat notifications always visible in queue
+        return !dismissedNotificationIds.includes(n.id);
+    });
     
     if (visibleQueue.length === 0) {
         stack.style.display = 'none';
@@ -2280,6 +2358,17 @@ function renderNotificationStack() {
 }
 
 function dismissNotification(id) {
+    // Stop auto-dismiss timer
+    if (autoDismissTimers[id]) {
+        clearTimeout(autoDismissTimers[id]);
+        delete autoDismissTimers[id];
+    }
+    
+    // Stop repeating this notification if it's a repeat alert
+    stopRepeatNotification(id);
+    
+    // For ALL notifications (repeat or not), when manually dismissed:
+    // Add to dismissed list so they don't show again in this session
     if (!dismissedNotificationIds.includes(id)) {
         dismissedNotificationIds.push(id);
         localStorage.setItem('sub_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
@@ -2288,21 +2377,20 @@ function dismissNotification(id) {
     // Remove from queue
     notificationQueue = notificationQueue.filter(n => n.id !== id);
     
-    // Stop repeating this notification
-    stopRepeatNotification(id);
-    
     renderNotificationStack();
-    
-    // Play a small success sound when dismissing
     playSound('success');
 }
 
 function dismissAllNotifications() {
     notificationQueue.forEach(n => {
+        if (autoDismissTimers[n.id]) {
+            clearTimeout(autoDismissTimers[n.id]);
+            delete autoDismissTimers[n.id];
+        }
+        stopRepeatNotification(n.id);
         if (!dismissedNotificationIds.includes(n.id)) {
             dismissedNotificationIds.push(n.id);
         }
-        stopRepeatNotification(n.id);
     });
     
     localStorage.setItem('sub_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
@@ -2316,7 +2404,7 @@ function initSwipeDismiss(element, notifId) {
     let startX = 0;
     let currentX = 0;
     let isDragging = false;
-    const threshold = 100; // pixels to dismiss
+    const threshold = 100;
     
     const startDrag = (e) => {
         isDragging = true;
@@ -2330,7 +2418,6 @@ function initSwipeDismiss(element, notifId) {
         currentX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
         const diff = currentX - startX;
         
-        // Only allow swipe left (negative diff)
         if (diff < 0) {
             element.style.transform = `translateX(${diff}px)`;
             if (Math.abs(diff) > threshold / 2) {
@@ -2348,50 +2435,41 @@ function initSwipeDismiss(element, notifId) {
         const diff = currentX - startX;
         
         if (Math.abs(diff) > threshold) {
-            // Dismiss
             element.classList.add('dismissed');
             setTimeout(() => dismissNotification(notifId), 300);
         } else {
-            // Snap back
             element.style.transform = '';
             element.classList.remove('swipe-left');
         }
     };
     
-    // Touch events
     element.addEventListener('touchstart', startDrag, { passive: true });
     element.addEventListener('touchmove', moveDrag, { passive: false });
     element.addEventListener('touchend', endDrag);
     
-    // Mouse events (for desktop)
     element.addEventListener('mousedown', startDrag);
     document.addEventListener('mousemove', moveDrag);
     document.addEventListener('mouseup', endDrag);
 }
 
-// ===================== REPEAT NOTIFICATIONS =====================
-let repeatTimers = {};
-
+// ===================== REPEAT NOTIFICATIONS (Expiring Subscriptions) =====================
 function scheduleRepeatNotification(notifData) {
-    // Clear existing timer for this notification
     stopRepeatNotification(notifData.id);
     
-    // Set up repeating notification
     repeatTimers[notifData.id] = setInterval(() => {
-        // Check if still not dismissed
+        // Check if still not manually dismissed
         if (!dismissedNotificationIds.includes(notifData.id)) {
             // Re-add to queue if not already there
             const exists = notificationQueue.some(n => n.id === notifData.id);
             if (!exists) {
-                // Mark sound as already played so it doesn't repeat
                 const repeatedNotif = {
                     ...notifData,
                     soundPlayed: true // Sound already played, don't play again
                 };
                 notificationQueue.push(repeatedNotif);
+                scheduleAutoDismiss(repeatedNotif);
             }
             renderNotificationStack();
-            // NO playSound here! Sound only plays once on first appearance
         } else {
             stopRepeatNotification(notifData.id);
         }
@@ -2404,6 +2482,34 @@ function stopRepeatNotification(id) {
         delete repeatTimers[id];
     }
 }
+
+// ===================== CLEAR OLD DISMISSED NOTIFICATIONS =====================
+function clearOldDismissedNotifications() {
+    const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    
+    dismissedNotificationIds = dismissedNotificationIds.filter(id => {
+        try {
+            const timestamp = parseInt(id.split('_')[1]);
+            return timestamp > oneWeekAgo;
+        } catch {
+            return true;
+        }
+    });
+    localStorage.setItem('sub_dismissed_notifications', JSON.stringify(dismissedNotificationIds));
+    
+    playedSoundIds = playedSoundIds.filter(id => {
+        try {
+            const timestamp = parseInt(id.split('_')[1]);
+            return timestamp > oneWeekAgo;
+        } catch {
+            return true;
+        }
+    });
+    localStorage.setItem('sub_played_sounds', JSON.stringify(playedSoundIds));
+}
+
+// Run cleanup on startup
+clearOldDismissedNotifications();
 
 // ===================== CLEAR OLD DISMISSED NOTIFICATIONS =====================
 function clearOldDismissedNotifications() {
@@ -2483,6 +2589,20 @@ function updateSoundIcon() {
         btn.classList.add('muted');
     }
 }
+
+// ===================== EXPORT DROPDOWN =====================
+function toggleExportMenu() {
+    const menu = document.getElementById('exportMenu');
+    if (menu) menu.classList.toggle('show');
+}
+
+// Close export menu when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.export-dropdown')) {
+        const menu = document.getElementById('exportMenu');
+        if (menu) menu.classList.remove('show');
+    }
+});
 
 // ===================== EXPIRING CHECKER =====================
 function checkExpiringSubscriptions() {
@@ -2670,6 +2790,13 @@ function openSettingsModal() {
         // Reset admin access for non-admin users
         resetSettingsAdminAccess();
     }
+        // Clear settings activation code inputs to fix auto-char bug
+    document.querySelectorAll('.settings-code-digit').forEach(input => {
+        input.value = '';
+        input.classList.remove('filled');
+    });
+    const settingsErr = document.getElementById('settingsActivationError');
+    if (settingsErr) settingsErr.style.display = 'none';
 }
 
 function closeSettingsModal() {
@@ -3434,6 +3561,7 @@ function showCustomerProfile(cid) {
                     <div class="customer-profile-phone"><i class="fas fa-phone"></i> ${getSourceIcon(c.source)} ${getSourceName(c.source)}</div>
                     ${c.phone ? `<div class="customer-profile-phone"><i class="fas fa-mobile-alt" style="color:var(--success)"></i> ${c.phone}</div>` : ''}
                     ${c.deliveredEmail ? `<div class="customer-profile-phone" style="font-size:13px;direction:ltr;text-align:right;"><i class="fas fa-envelope" style="color:var(--primary)"></i> <strong>${c.deliveredEmail}</strong></div>` : ''}
+                    ${c.deliveredPassword ? `<div class="customer-profile-phone" style="font-size:13px;direction:ltr;text-align:right;"><i class="fas fa-key" style="color:var(--warning)"></i> <strong>${c.deliveredPassword}</strong></div>` : ''}
                     <div class="customer-status-badge${st}"><i class="fas fa-crown" style="font-size:10px"></i> ${getCustomerStatusLabel(st)}</div>
                 </div>
             </div>
@@ -3667,6 +3795,7 @@ function buildCustomerCards(list, isDashboard) {
                 <div class="customer-card-field"><div class="customer-card-label">المصدر</div><div class="customer-card-value"><span class="customer-card-source-icon">${getSourceIcon(c.source)}</span>${getSourceName(c.source)}</div></div>
                 ${c.phone ? `<div class="customer-card-field"><div class="customer-card-label">رقم الهاتف</div><div class="customer-card-value"><i class="fas fa-phone" style="color:var(--success);margin-left:5px;"></i>${c.phone}</div></div>` : ''}
                 ${c.deliveredEmail ? `<div class="customer-card-field full-width"><div class="customer-card-label">الإيميل المسلّم</div><div class="customer-card-value" style="color:var(--primary);font-size:13px;direction:ltr;text-align:right;"><i class="fas fa-envelope" style="margin-left:5px;"></i>${c.deliveredEmail}</div></div>` : ''}
+                ${c.deliveredPassword ? `<div class="customer-card-field full-width"><div class="customer-card-label">باسورد الإيميل</div><div class="customer-card-value" style="color:var(--warning);font-size:13px;direction:ltr;text-align:right;"><i class="fas fa-key" style="margin-left:5px;"></i>${c.deliveredPassword}</div></div>` : ''}
                 <div class="customer-card-field"><div class="customer-card-label">المورد</div><div class="customer-card-value">${supplier?supplier.name:'-'}</div></div>
                 <div class="customer-card-field"><div class="customer-card-label">سعر البيع</div><div class="customer-card-value">${(c.sellPrice||c.price||0).toLocaleString()} ج.م</div></div>
                 <div class="customer-card-field"><div class="customer-card-label">البداية</div><div class="customer-card-value">${formatDateArabic(new Date(c.startDate))}</div></div>
@@ -3683,4 +3812,245 @@ function buildCustomerCards(list, isDashboard) {
             </div>
         </div>`;
     }).join('') + '</div>';
+}
+
+// ===================== READY MESSAGE =====================
+function generateMessage() {
+    const name = document.getElementById('customerName').value.trim();
+    const serviceSelect = document.getElementById('customerService');
+    const serviceId = serviceSelect.value;
+    const service = serviceId ? services.find(s => s.id == serviceId) : null;
+    const sellPrice = document.getElementById('customerSellPrice').value;
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const deliveredEmail = document.getElementById('customerDeliveredEmail').value.trim();
+    const deliveredPassword = document.getElementById('customerDeliveredPassword').value.trim();
+    
+    if (!name || !service) {
+        showNotification('⚠️ املأ اسم العميل والخدمة الأول', 'warning');
+        return;
+    }
+    
+    // لو كتب الإيميل بس ونسي الباسورد → اطلب الباسورد
+    if (deliveredEmail && !deliveredPassword) {
+        showNotification('⚠️ اكتب باسورد الإيميل', 'warning');
+        return;
+    }
+    
+    const serviceName = service ? service.name : 'الخدمة';
+    const serviceIcon = service ? service.icon : '📦';
+    
+    const startArabic = startDate ? formatDateArabic(new Date(startDate)) : '...';
+    const endArabic = endDate ? formatDateArabic(new Date(endDate)) : '...';
+    
+    let message = `👋 مرحباً ${name}!\n\n`;
+    message += `✅ تم استلام المبلغ بنجاح\n`;
+    message += `💳 المبلغ: ${sellPrice || '...'} ج.م\n\n`;
+    message += `📦 الخدمة: ${serviceIcon} ${serviceName}\n`;
+    message += `📅 تاريخ البداية: ${startArabic}\n`;
+    message += `📅 تاريخ الانتهاء: ${endArabic}\n`;
+    
+    // لو كتب الإيميل والباسورد → ضيفهم للرسالة
+    if (deliveredEmail && deliveredPassword) {
+        message += `\n📧 الإيميل: ${deliveredEmail}\n`;
+        message += `🔑 الباسورد: ${deliveredPassword}\n`;
+        message += `\n⏳ انتظرنا بعض الوقت...\n`;
+    }
+    
+    message += `\n🙏 شكراً لك!\n`;
+    message += `\n📞 للاستفسار: [رقمك هنا]`;
+    
+    document.getElementById('readyMessage').value = message;
+    showNotification('✅ تم توليد الرسالة!', 'success');
+}
+
+function copyMessage() {
+    const textarea = document.getElementById('readyMessage');
+    if (!textarea.value.trim()) {
+        showNotification('⚠️ اضغط "توليد رسالة" الأول', 'warning');
+        return;
+    }
+    
+    textarea.select();
+    document.execCommand('copy');
+    
+    showNotification('📋 تم نسخ الرسالة! الصقها في واتساب', 'success');
+    playSound('success');
+}
+
+function sendViaWhatsApp() {
+    const phone = document.getElementById('customerPhone').value.trim();
+    const message = document.getElementById('readyMessage').value;
+    
+    if (!message.trim()) {
+        showNotification('⚠️ اضغط "توليد رسالة" الأول', 'warning');
+        return;
+    }
+    
+    if (!phone) {
+        showNotification('⚠️ اكتب رقم الهاتف الأول', 'warning');
+        return;
+    }
+    
+    // تنظيف الرقم
+    const cleanPhone = phone.replace(/^0/, '20').replace(/[^0-9]/g, '');
+    const encodedMessage = encodeURIComponent(message);
+    
+    // فتح واتساب ويب مع الرسالة جاهزة
+    window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
+    
+    showNotification('📱 تم فتح واتساب مع الرسالة جاهزة!', 'success');
+}
+
+// ===================== ACTIVATION FROM SETTINGS =====================
+function activateFromSettings() {
+    const inputs = document.querySelectorAll('.settings-code-digit');
+    let code = '';
+    inputs.forEach(input => {
+        code += input.value.toUpperCase();
+    });
+    
+    const errorEl = document.getElementById('settingsActivationError');
+    
+    if (code.length !== CODE_LENGTH) {
+        if (errorEl) {
+            errorEl.textContent = '⚠️ أكمل الـ 6 خانات';
+            errorEl.style.display = 'block';
+        }
+        return;
+    }
+    
+    if (!isValidActivationCode(code)) {
+        if (errorEl) {
+            errorEl.textContent = '⚠️ الكود غير صالح. الصيغة: حرفين + 4 أرقام';
+            errorEl.style.display = 'block';
+        }
+        playSound('alert');
+        return;
+    }
+    
+    // Activate the device permanently
+    localStorage.setItem(ACTIVATED_KEY, 'true');
+    updateDeviceActivationStatus();
+    
+    if (errorEl) errorEl.style.display = 'none';
+    inputs.forEach(input => {
+        input.value = '';
+        input.classList.remove('filled');
+    });
+    
+    showNotification('✅ تم التفعيل بنجاح! الموقع مفتوح لك دايماً', 'success');
+    playSound('success');
+    
+    // Update UI immediately
+    startTrialWidget();
+    
+    // If lock screen is showing, hide it
+    hideLockScreen();
+}
+
+// ===================== EXCEL EXPORT =====================
+function exportCustomersToExcel() {
+    if (customers.length === 0) {
+        showNotification('⚠️ مفيش عملاء للتصدير', 'warning');
+        return;
+    }
+    
+    const data = customers.map(c => {
+        const st = getStatus(c);
+        const supplier = suppliers.find(s => s.id == c.supplierId);
+        return {
+            'اسم العميل': c.name,
+            'المصدر': getSourceName(c.source),
+            'الخدمة': c.serviceName,
+            'سعر الشراء (ج.م)': c.costPrice || 0,
+            'سعر البيع (ج.م)': c.sellPrice || c.price || 0,
+            'الربح (ج.م)': (parseFloat(c.sellPrice || c.price || 0) - parseFloat(c.costPrice || 0)),
+            'المورد': supplier ? supplier.name : '-',
+            'تاريخ البداية': c.startDate,
+            'تاريخ الانتهاء': c.endDate,
+            'الحالة': st.text,
+            'رقم الهاتف': c.phone || '',
+            'الإيميل المسلم': c.deliveredEmail || '',
+            'باسورد الإيميل': c.deliveredPassword || '',
+            'ملاحظات': c.notes || ''
+        };
+    });
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'العملاء');
+    XLSX.writeFile(wb, 'Stack_CRM_Customers.xlsx');
+    
+    showNotification('✅ تم تحميل ملف العملاء!', 'success');
+    playSound('success');
+}
+
+function exportSuppliersToExcel() {
+    if (suppliers.length === 0) {
+        showNotification('⚠️ مفيش موردين للتصدير', 'warning');
+        return;
+    }
+    
+    const data = suppliers.map(s => {
+        const st = getSupplierStats(s.id);
+        return {
+            'اسم المورد': s.name,
+            'الهاتف': s.phone || '-',
+            'الحالة': s.status === 'active' ? 'نشط' : 'متوقف',
+            'عدد الطلبات': st.totalOrders,
+            'إجمالي المدفوع (ج.م)': st.totalPaid,
+            'إجمالي الأرباح (ج.م)': st.totalProfit,
+            'المشاكل': st.issues,
+            'ملاحظات': s.notes || ''
+        };
+    });
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'الموردين');
+    XLSX.writeFile(wb, 'Stack_CRM_Suppliers.xlsx');
+    
+    showNotification('✅ تم تحميل ملف الموردين!', 'success');
+    playSound('success');
+}
+
+function exportFinanceToExcel() {
+    const revenue = customers.reduce((sum, c) => sum + (parseFloat(c.sellPrice || c.price || 0)), 0);
+    const totalCost = customers.reduce((sum, c) => sum + (parseFloat(c.costPrice || 0)), 0);
+    const totalExp = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const netProfit = revenue - totalCost - totalExp;
+    
+    const summaryData = [{
+        'البند': 'إجمالي الإيرادات',
+        'المبلغ (ج.م)': revenue
+    }, {
+        'البند': 'إجمالي تكلفة الشراء',
+        'المبلغ (ج.م)': totalCost
+    }, {
+        'البند': 'إجمالي المصروفات',
+        'المبلغ (ج.م)': totalExp
+    }, {
+        'البند': 'صافي الربح',
+        'المبلغ (ج.م)': netProfit
+    }];
+    
+    const expensesData = expenses.length ? expenses.map(e => ({
+        'الخدمة': e.serviceName,
+        'الوصف': e.desc,
+        'المبلغ (ج.م)': e.amount,
+        'التاريخ': e.date,
+        'ملاحظات': e.notes || ''
+    })) : [{'ملاحظة': 'لا توجد مصروفات'}];
+    
+    const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.json_to_sheet(summaryData);
+    const ws2 = XLSX.utils.json_to_sheet(expensesData);
+    
+    XLSX.utils.book_append_sheet(wb, ws1, 'الملخص المالي');
+    XLSX.utils.book_append_sheet(wb, ws2, 'المصروفات');
+    XLSX.writeFile(wb, 'Stack_CRM_Finance.xlsx');
+    
+    showNotification('✅ تم تحميل ملف المالية!', 'success');
+    playSound('success');
 }

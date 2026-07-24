@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام إدارة الاشتراكات - Stack Store CRM</title>
@@ -215,10 +216,7 @@
             <i class="fas fa-chart-line"></i>
             <span>الإحصائيات المالية</span>
         </div>
-        <div class="nav-item" onclick="showSection('activity-log')">
-            <i class="fas fa-history"></i>
-            <span>سجل النشاط</span>
-        </div>
+
         <div class="nav-item" onclick="openSettingsModal()">
             <i class="fas fa-cog"></i>
             <span>الإعدادات</span>
@@ -242,6 +240,27 @@
             <div class="header">
                 <h1 class="header-title">لوحة التحكم</h1>
                 <div class="header-actions">
+                    <div class="export-dropdown">
+                        <button class="btn btn-success" onclick="toggleExportMenu()">
+                            <i class="fas fa-file-excel"></i>
+                            تصدير Excel
+                            <i class="fas fa-chevron-down" style="margin-right:6px;font-size:12px;"></i>
+                        </button>
+                        <div class="export-menu" id="exportMenu">
+                            <div class="export-item" onclick="exportCustomersToExcel()">
+                                <i class="fas fa-users" style="color:var(--primary)"></i>
+                                تصدير العملاء
+                            </div>
+                            <div class="export-item" onclick="exportSuppliersToExcel()">
+                                <i class="fas fa-truck" style="color:#38bdf8"></i>
+                                تصدير الموردين
+                            </div>
+                            <div class="export-item" onclick="exportFinanceToExcel()">
+                                <i class="fas fa-chart-line" style="color:var(--success)"></i>
+                                تصدير المالية
+                            </div>
+                        </div>
+                    </div>
                     <button class="btn btn-primary" onclick="showSection('add-customer')">
                         <i class="fas fa-plus"></i>
                         عميل جديد
@@ -318,6 +337,10 @@
             <div class="header">
                 <h1 class="header-title">قائمة العملاء</h1>
                 <div class="header-actions">
+                    <button class="btn btn-success" onclick="exportCustomersToExcel()">
+                        <i class="fas fa-file-excel"></i>
+                        تنزيل Excel العملاء
+                    </button>
                     <button class="btn btn-primary" onclick="showSection('add-customer')">
                         <i class="fas fa-plus"></i>
                         عميل جديد
@@ -372,6 +395,10 @@
             <div class="header">
                 <h1 class="header-title">الموردين</h1>
                 <div class="header-actions">
+                    <button class="btn btn-success" onclick="exportSuppliersToExcel()">
+                        <i class="fas fa-file-excel"></i>
+                        تنزيل Excel الموردين
+                    </button>
                     <button class="btn btn-primary" onclick="openSupplierModal()">
                         <i class="fas fa-plus"></i>
                         مورد جديد
@@ -427,12 +454,16 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">رقم الهاتف</label>
+                            <label class="form-label">رقم هاتف العميل (اختياري)</label>
                             <input type="tel" class="form-input" id="customerPhone" placeholder="مثال: 01012345678">
                         </div>
-                        <div class="form-group full-width">
-                            <label class="form-label">الإيميل المسلّم للعميل</label>
+                        <div class="form-group">
+                            <label class="form-label">الإيميل المسلّم <span style="color:var(--gray);font-size:12px;">(اختياري)</span></label>
                             <input type="email" class="form-input" id="customerDeliveredEmail" placeholder="الإيميل اللي تم تسليمه للعميل...">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">باسورد الإيميل <span style="color:var(--gray);font-size:12px;">(اختياري)</span></label>
+                            <input type="text" class="form-input" id="customerDeliveredPassword" placeholder="الباسورد اللي تم تسليمه للعميل...">
                         </div>
                         <div class="form-group">
                             <label class="form-label">الخدمة المشتراة *</label>
@@ -500,6 +531,25 @@
                             <input type="text" class="form-input" id="customerNotes" placeholder="أي ملاحظات إضافية...">
                         </div>
                     </div>
+                    <!-- رسالة جاهزة للعميل -->
+                    <div class="form-group full-width" style="margin-top: 20px; padding: 20px; background: rgba(99,102,241,0.05); border: 1px dashed var(--primary); border-radius: 16px;">
+                        <label class="form-label" style="color: var(--primary);">
+                            <i class="fas fa-comment-dots"></i> رسالة جاهزة للعميل
+                        </label>
+                        <textarea class="form-input" id="readyMessage" rows="4" readonly style="background: rgba(0,0,0,0.2); font-size: 14px; line-height: 1.8;"></textarea>
+                        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-success" onclick="copyMessage()" style="font-size: 13px;">
+                                <i class="fas fa-copy"></i> نسخ الرسالة
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="sendViaWhatsApp()" style="font-size: 13px; background: linear-gradient(135deg, #25d366, #128c7e);">
+                                <i class="fab fa-whatsapp"></i> إرسال واتساب
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="generateMessage()" style="font-size: 13px;">
+                                <i class="fas fa-magic"></i> توليد رسالة
+                            </button>
+                        </div>
+                    </div>
+
                     <div style="margin-top: 25px; display: flex; gap: 12px;">
                         <button type="submit" class="btn btn-success">
                             <i class="fas fa-check"></i>
@@ -529,6 +579,10 @@
             <div class="header">
                 <h1 class="header-title">الإحصائيات المالية</h1>
                 <div class="header-actions">
+                    <button class="btn btn-success" onclick="exportFinanceToExcel()">
+                        <i class="fas fa-file-excel"></i>
+                        تنزيل Excel المالية
+                    </button>
                     <button class="btn btn-primary" onclick="openExpenseModal()">
                         <i class="fas fa-plus"></i>
                         مصروف جديد
@@ -822,6 +876,28 @@
                         <input type="checkbox" id="autoNotify" checked style="width: 18px; height: 18px;">
                         <span>تفعيل الإشعارات التلقائية</span>
                     </label>
+                </div>
+
+                                <!-- Client Activation Section -->
+                <div class="form-group" style="border: 1px solid var(--success); border-radius: 12px; padding: 15px; margin-bottom: 20px;">
+                    <label class="form-label" style="color: var(--success);">
+                        <i class="fas fa-key"></i> تفعيل اشتراكك
+                    </label>
+                    <p style="color: var(--gray); font-size: 12px; margin: 8px 0;">
+                        أدخل كود التفعيل اللي استلمته عشان تفتح الموقع دايماً (حتى قبل ما الفترة التجريبية تخلص)
+                    </p>
+                    <div class="activation-code-inputs" style="margin: 10px 0;">
+                        <input type="password" class="code-digit settings-code-digit" maxlength="1" data-index="0" autocomplete="off">
+                        <input type="password" class="code-digit settings-code-digit" maxlength="1" data-index="1" autocomplete="off">
+                        <input type="password" class="code-digit settings-code-digit" maxlength="1" data-index="2" autocomplete="off">
+                        <input type="password" class="code-digit settings-code-digit" maxlength="1" data-index="3" autocomplete="off">
+                        <input type="password" class="code-digit settings-code-digit" maxlength="1" data-index="4" autocomplete="off">
+                        <input type="password" class="code-digit settings-code-digit" maxlength="1" data-index="5" autocomplete="off">
+                    </div>
+                    <p id="settingsActivationError" class="activation-error" style="display: none; margin-top: 8px;">⚠️ الكود غير صحيح</p>
+                    <button type="button" class="btn btn-success" onclick="activateFromSettings()" style="width: 100%; margin-top: 10px;">
+                        <i class="fas fa-unlock"></i> تفعيل الاشتراك
+                    </button>
                 </div>
 
                 <!-- Admin Access Section (Hidden by default) -->
