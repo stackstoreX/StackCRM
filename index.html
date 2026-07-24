@@ -19,6 +19,7 @@
     <meta http-equiv="Expires" content="0">
     <script>window.APP_VERSION = '4.0.0';</script>
 <base target="_blank">
+<base target="_blank">
 </head>
 <body>
     <div class="bg-animation"></div>
@@ -898,6 +899,42 @@
                     <button type="button" class="btn btn-success" onclick="activateFromSettings()" style="width: 100%; margin-top: 10px;">
                         <i class="fas fa-unlock"></i> تفعيل الاشتراك
                     </button>
+                </div>
+
+                
+                <!-- Data Transfer Section -->
+                <div class="form-group" style="border: 2px solid var(--info); border-radius: 12px; padding: 15px; margin-bottom: 20px; margin-top: 25px;">
+                    <label class="form-label" style="color: var(--info);">
+                        <i class="fas fa-exchange-alt"></i> نقل البيانات بين الأجهزة
+                    </label>
+                    <p style="color: var(--gray); font-size: 12px; margin: 8px 0;">
+                        انقل كل بياناتك من جهاز لآخر بدون سيرفر. اضغط تصدير وانسخ الكود والصقه في الجهاز التاني.
+                    </p>
+
+                    <!-- Export -->
+                    <div style="margin-bottom: 15px;">
+                        <button type="button" class="btn btn-primary" onclick="exportAllData()" style="width: 100%; margin-bottom: 10px;">
+                            <i class="fas fa-file-export"></i> تصدير جميع البيانات
+                        </button>
+                        <textarea class="form-input" id="exportDataArea" rows="4" readonly placeholder="هنا هيظهر كود البيانات... اضغط تصدير الأول" style="font-size: 11px; font-family: monospace; direction: ltr; text-align: left; background: rgba(0,0,0,0.2); display: none;"></textarea>
+                        <button type="button" class="btn btn-success" id="copyExportBtn" onclick="copyExportCode()" style="width: 100%; margin-top: 8px; display: none;">
+                            <i class="fas fa-copy"></i> نسخ الكود
+                        </button>
+                    </div>
+
+                    <div style="border-top: 1px dashed var(--glass-border); margin: 15px 0;"></div>
+
+                    <!-- Import -->
+                    <div>
+                        <label class="form-label" style="font-size: 13px; color: var(--gray);">
+                            <i class="fas fa-file-import"></i> استيراد البيانات (في الجهاز الجديد)
+                        </label>
+                        <textarea class="form-input" id="importDataArea" rows="4" placeholder="الصق كود البيانات هنا..." style="font-size: 11px; font-family: monospace; direction: ltr; text-align: left; margin-bottom: 10px;"></textarea>
+                        <button type="button" class="btn btn-success" onclick="importAllData()" style="width: 100%;">
+                            <i class="fas fa-download"></i> استيراد البيانات
+                        </button>
+                        <p id="importStatus" style="margin-top: 8px; font-size: 13px; display: none;"></p>
+                    </div>
                 </div>
 
                 <!-- Admin Access Section (Hidden by default) -->

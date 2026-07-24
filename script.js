@@ -4054,3 +4054,127 @@ function exportFinanceToExcel() {
     showNotification('✅ تم تحميل ملف المالية!', 'success');
     playSound('success');
 }
+
+// ===================== DATA TRANSFER (NO SERVER) =====================
+function exportAllData() {
+    const exportArea = document.getElementById('exportDataArea');
+    const copyBtn = document.getElementById('copyExportBtn');
+
+    if (!exportArea || !copyBtn) return;
+
+    try {
+        // Collect all app data from localStorage
+        const data = {};
+        const keys = [
+            'sub_customers', 'sub_services', 'sub_expenses', 'sub_suppliers',
+            'sub_activity_log', 'sub_subscription_history', 'sub_settings',
+            'sub_merchant_name', 'sub_sound', 'sub_push_enabled',
+            'sub_dismissed_notifications', 'sub_played_sounds'
+        ];
+
+        keys.forEach(key => {
+            const value = localStorage.getItem(key);
+            if (value !== null) {
+                data[key] = value;
+            }
+        });
+
+        if (Object.keys(data).length === 0) {
+            showNotification('⚠️ مفيش بيانات للتصدير', 'warning');
+            return;
+        }
+
+        // Convert to JSON then Base64
+        const jsonStr = JSON.stringify(data);
+        const compressed = btoa(unescape(encodeURIComponent(jsonStr)));
+
+        exportArea.value = compressed;
+        exportArea.style.display = 'block';
+        copyBtn.style.display = 'block';
+
+        showNotification('✅ تم تصدير ' + Object.keys(data).length + ' عناصر! انسخ الكود دلوقتي', 'success');
+        playSound('success');
+
+        // Auto-select for easy copying
+        exportArea.select();
+
+    } catch (err) {
+        console.error('Export error:', err);
+        showNotification('❌ حصل خطأ في التصدير', 'danger');
+    }
+}
+
+function copyExportCode() {
+    const exportArea = document.getElementById('exportDataArea');
+    if (!exportArea || !exportArea.value) {
+        showNotification('⚠️ مفيش كود للنسخ', 'warning');
+        return;
+    }
+
+    exportArea.select();
+    document.execCommand('copy');
+
+    showNotification('📋 تم نسخ الكود! الصقه في الجهاز التاني', 'success');
+    playSound('success');
+}
+
+function importAllData() {
+    const importArea = document.getElementById('importDataArea');
+    const statusEl = document.getElementById('importStatus');
+
+    if (!importArea || !importArea.value.trim()) {
+        showNotification('⚠️ الصق كود البيانات الأول', 'warning');
+        return;
+    }
+
+    try {
+        const compressed = importArea.value.trim();
+        const jsonStr = decodeURIComponent(escape(atob(compressed)));
+        const data = JSON.parse(jsonStr);
+
+        if (!data || typeof data !== 'object') {
+            throw new Error('Invalid data format');
+        }
+
+        const keysCount = Object.keys(data).length;
+        if (keysCount === 0) {
+            showNotification('⚠️ الكود فاضي', 'warning');
+            return;
+        }
+
+        // Confirm before overwriting
+        if (!confirm('⚠️ هيتم استبدال كل البيانات الحالية بالبيانات الجديدة. متأكد؟')) {
+            return;
+        }
+
+        // Write to localStorage
+        Object.entries(data).forEach(([key, value]) => {
+            localStorage.setItem(key, value);
+        });
+
+        // Update UI feedback
+        if (statusEl) {
+            statusEl.textContent = '✅ تم استيراد ' + keysCount + ' عناصر بنجاح! جاري تحديث الصفحة...';
+            statusEl.style.color = 'var(--success)';
+            statusEl.style.display = 'block';
+        }
+
+        showNotification('✅ تم استيراد البيانات بنجاح! الصفحة هتتحدث دلوقتي', 'success');
+        playSound('success');
+
+        // Reload after short delay to apply new data
+        setTimeout(() => {
+            location.reload();
+        }, 2000);
+
+    } catch (err) {
+        console.error('Import error:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ الكود غير صحيح أو تالف! تأكد إنك نسخت الكود كامل';
+            statusEl.style.color = 'var(--danger)';
+            statusEl.style.display = 'block';
+        }
+        showNotification('❌ الكود غير صحيح! تأكد من نسخه كامل', 'danger');
+        playSound('alert');
+    }
+}

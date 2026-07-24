@@ -3317,3 +3317,38 @@ body {
         min-width: 200px;
     }
 }
+
+/* ===== DATA TRANSFER SECTION ===== */
+#exportDataArea,
+#importDataArea {
+    font-family: 'Courier New', monospace !important;
+    font-size: 11px !important;
+    line-height: 1.6;
+    resize: vertical;
+    word-break: break-all;
+}
+
+#exportDataArea {
+    background: rgba(0, 0, 0, 0.25) !important;
+    border-color: var(--info);
+    color: #38bdf8;
+}
+
+#importDataArea {
+    background: rgba(0, 0, 0, 0.15) !important;
+    border-color: var(--success);
+}
+
+#importDataArea:focus {
+    border-color: var(--success);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+#importStatus {
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.03);
+    font-weight: 600;
+    text-align: center;
+    animation: fadeIn 0.3s ease;
+}
