@@ -20,6 +20,7 @@
     <script>window.APP_VERSION = '4.0.0';</script>
 <base target="_blank">
 <base target="_blank">
+<base target="_blank">
 </head>
 <body>
     <div class="bg-animation"></div>
@@ -204,6 +205,11 @@
             <span>الموردين</span>
             <span class="nav-badge" id="supplierCountBadge" style="display:none;">0</span>
         </div>
+        <div class="nav-item" onclick="showSection('stock')">
+            <i class="fas fa-database"></i>
+            <span>مخزن الحسابات</span>
+            <span class="nav-badge" id="stockCountBadge" style="display:none;">0</span>
+        </div>
         <div class="nav-item" onclick="showSection('add-customer')">
             <i class="fas fa-user-plus"></i>
             <span>إضافة عميل جديد</span>
@@ -259,6 +265,10 @@
                             <div class="export-item" onclick="exportFinanceToExcel()">
                                 <i class="fas fa-chart-line" style="color:var(--success)"></i>
                                 تصدير المالية
+                            </div>
+                            <div class="export-item" onclick="exportStockToExcel()">
+                                <i class="fas fa-database" style="color:var(--warning)"></i>
+                                تصدير المخزن
                             </div>
                         </div>
                     </div>
@@ -430,6 +440,45 @@
             </div>
         </div>
 
+
+        <!-- Stock Section -->
+        <div class="section" id="stock-section">
+            <div class="header">
+                <h1 class="header-title">مخزن الحسابات</h1>
+                <div class="header-actions">
+                    <button class="btn btn-success" onclick="exportStockToExcel()">
+                        <i class="fas fa-file-excel"></i>
+                        تنزيل Excel المخزن
+                    </button>
+                    <button class="btn btn-primary" onclick="openStockModal()">
+                        <i class="fas fa-plus"></i>
+                        إضافة حساب جديد
+                    </button>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="stockSearch" placeholder="ابحث بالإيميل..." oninput="filterStock()">
+                </div>
+                <select class="form-select" id="stockStatusFilter" onchange="filterStock()" style="width: 180px;">
+                    <option value="all">كل الحالات</option>
+                    <option value="available">متاح</option>
+                    <option value="finished">منتهي</option>
+                </select>
+            </div>
+
+            <div class="card">
+                <div id="stockTableContainer">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📧</div>
+                        <div class="empty-state-title">لا يوجد حسابات</div>
+                        <div class="empty-state-text">أضف حسابك الأول في المخزن</div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <!-- Add Customer Section -->
         <div class="section" id="add-customer-section">
             <div class="header">
@@ -459,12 +508,18 @@
                             <input type="tel" class="form-input" id="customerPhone" placeholder="مثال: 01012345678">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">الإيميل المسلّم <span style="color:var(--gray);font-size:12px;">(اختياري)</span></label>
-                            <input type="email" class="form-input" id="customerDeliveredEmail" placeholder="الإيميل اللي تم تسليمه للعميل...">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">باسورد الإيميل <span style="color:var(--gray);font-size:12px;">(اختياري)</span></label>
-                            <input type="text" class="form-input" id="customerDeliveredPassword" placeholder="الباسورد اللي تم تسليمه للعميل...">
+                            <label class="form-label">الحساب من المخزن <span style="color:var(--gray);font-size:12px;">(اختياري)</span></label>
+                            <select class="form-select" id="customerStockItem" onchange="updateStockPreview()">
+                                <option value="">اختر حساب من المخزن</option>
+                            </select>
+                            <p id="noStockMsg" style="color: var(--warning); font-size: 12px; margin-top: 5px; display: none;">
+                                ⚠️ مفيش حسابات متاحة - <a href="#" onclick="showSection('stock'); return false;" style="color: var(--primary);">ضيف حساب من هنا</a>
+                            </p>
+                            <div id="stockPreview" style="margin-top: 10px; padding: 12px; background: rgba(99,102,241,0.05); border: 1px solid var(--glass-border); border-radius: 12px; display: none;">
+                                <div style="font-size: 13px; color: var(--gray); margin-bottom: 4px;"><i class="fas fa-envelope" style="color: var(--primary); margin-left: 5px;"></i> <span id="stockPreviewEmail" style="color: var(--light); font-weight: 600;"></span></div>
+                                <div style="font-size: 13px; color: var(--gray);"><i class="fas fa-key" style="color: var(--warning); margin-left: 5px;"></i> <span id="stockPreviewPassword" style="color: var(--light); font-weight: 600;"></span></div>
+                                <div style="font-size: 12px; color: var(--success); margin-top: 6px;"><i class="fas fa-users" style="margin-left: 5px;"></i> متبقي: <strong id="stockPreviewRemaining">0</strong> مستخدم</div>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">الخدمة المشتراة *</label>
@@ -694,6 +749,44 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Stock Modal -->
+    <div class="modal-overlay" id="stockModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="stockModalTitle">إضافة حساب جديد</h3>
+                <button class="modal-close" onclick="closeStockModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <form onsubmit="addStock(event)">
+                <input type="hidden" id="stockId">
+                <div class="form-group">
+                    <label class="form-label">الإيميل *</label>
+                    <input type="email" class="form-input" id="stockEmail" required placeholder="example@email.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">الباسورد *</label>
+                    <input type="text" class="form-input" id="stockPassword" required placeholder="أدخل الباسورد">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">عدد المستخدمين المسموح *</label>
+                    <select class="form-select" id="stockMaxUsers" required>
+                        <option value="1">1 مستخدم</option>
+                        <option value="2" selected>2 مستخدم (افتراضي)</option>
+                        <option value="3">3 مستخدمين</option>
+                        <option value="4">4 مستخدمين</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">ملاحظات</label>
+                    <input type="text" class="form-input" id="stockNotes" placeholder="أي ملاحظات...">
+                </div>
+                <div style="margin-top: 20px; display: flex; gap: 12px;">
+                    <button type="submit" class="btn btn-success" id="stockSubmitBtn">إضافة الحساب</button>
+                    <button type="button" class="btn btn-outline" onclick="closeStockModal()">إلغاء</button>
+                </div>
+            </form>
         </div>
     </div>
 

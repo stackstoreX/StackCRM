@@ -1000,7 +1000,9 @@ let pushEnabled = localStorage.getItem('sub_push_enabled') === 'true';
 // ===================== INIT =====================
 document.addEventListener('DOMContentLoaded', function() {
     updateServicesSelect();
-    updateSuppliersSelect();        // 👈 أضف السطر ده
+    updateSuppliersSelect();
+    renderStock();
+    updateStockSelect();
     checkServicesEmpty();
     renderAll();
     renderSuppliers();              // 👈 أضف السطر ده
@@ -1287,6 +1289,7 @@ function showSection(sectionId) {
     }
     if (sectionId === 'expiring') renderExpiring();
     if (sectionId === 'finance') renderFinance();
+    if (sectionId === 'stock') renderStock();
     
     // ✅ حدث العدادات
     updateBadges();
@@ -1430,28 +1433,42 @@ function formatDateArabic(date) {
 // ===================== CUSTOMERS =====================
 function addCustomer(e) {
     e.preventDefault();
-    
+
     const name = document.getElementById('customerName').value.trim();
     const source = document.getElementById('customerSource').value;
     const serviceId = parseInt(document.getElementById('customerService').value);
+    const supplierId = document.getElementById('customerSupplier').value;
+    const costPrice = parseFloat(document.getElementById('customerCostPrice').value) || 0;
+    const sellPrice = parseFloat(document.getElementById('customerSellPrice').value) || 0;
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
-    const deliveredPassword = document.getElementById('customerDeliveredPassword').value.trim();
     const notes = document.getElementById('customerNotes').value.trim();
     const phone = document.getElementById('customerPhone').value.trim();
-    const deliveredEmail = document.getElementById('customerDeliveredEmail').value.trim();
-    
+    const stockId = document.getElementById('customerStockItem').value;
+
     if (services.length === 0) {
         showNotification('⚠️ مفيش خدمات! ضيف خدمة الأول من قسم الخدمات', 'warning');
         return;
     }
-    
+
     if (!name || !source || !serviceId || !startDate || !endDate) {
         showNotification('⚠️ يرجى ملء جميع الحقول المطلوبة', 'warning');
         return;
     }
-    
+
     const service = services.find(s => s.id === serviceId);
+    const supplier = suppliers.find(s => s.id == supplierId);
+    let stockItem = null;
+
+    // Handle stock selection - decrease remaining uses
+    if (stockId) {
+        stockItem = stock.find(s => s.id == stockId);
+        if (!stockItem) { showNotification('الحساب مش موجود', 'warning'); return; }
+        if (stockItem.remainingUses <= 0) { showNotification('الحساب ' + stockItem.email + ' خلص! اختار حساب تاني', 'warning'); return; }
+        stockItem.remainingUses -= 1;
+        saveData();
+    }
+
     const customer = {
         id: Date.now(),
         name,
@@ -1459,23 +1476,33 @@ function addCustomer(e) {
         serviceId,
         serviceName: service.name,
         serviceIcon: service.icon,
-        price: service.price,
+        price: sellPrice || service.price,
+        costPrice,
+        sellPrice: sellPrice || service.price,
+        supplierId: supplierId || null,
+        supplierName: supplier ? supplier.name : null,
         startDate,
         endDate,
         notes,
         phone: phone || null,
-        deliveredEmail: deliveredEmail || null,
-        deliveredPassword: deliveredPassword || null,
+        stockId: stockItem ? stockItem.id : null,
+        deliveredEmail: stockItem ? stockItem.email : null,
+        deliveredPassword: stockItem ? stockItem.password : null,
         status: 'active',
-        addedAt: new Date().toISOString()
+        addedAt: new Date().toISOString(),
+        subscriptionHistory: [{
+            serviceId, serviceName: service.name, serviceIcon: service.icon, startDate, endDate,
+            costPrice, sellPrice: sellPrice || service.price, supplierId: supplierId || null, status: 'active', isRenewal: false,
+            createdAt: new Date().toISOString()
+        }]
     };
-    
+
     customers.push(customer);
     saveData();
-    
-    showNotification('✅ تم إضافة العميل ' + name + ' بنجاح!', 'success');
+
+    showNotification('✅ تم إضافة العميل ' + name + ' بنجاح!' + (stockItem ? ' (حساب: ' + stockItem.email + ')' : ''), 'success');
     playSound('success');
-    
+
     resetForm();
     renderAll();
 }
@@ -1492,7 +1519,11 @@ function resetForm() {
     document.getElementById('customerPhone').value = '';
     document.getElementById('customerMessengerLink').value = '';
     document.getElementById('readyMessage').value = '';
-    document.getElementById('customerDeliveredPassword').value = '';    currentStartDate = new Date();
+    document.getElementById('customerStockItem').value = '';
+    const preview = document.getElementById('stockPreview');
+    if (preview) preview.style.display = 'none';
+    updateStockSelect();
+    currentStartDate = new Date();
     currentEndDate = new Date();
     renderCalendar('start', currentStartDate);
     renderCalendar('end', currentEndDate);
@@ -1694,7 +1725,9 @@ function renderAll() {
     renderFinance();
     updateBadges();
     updateServicesSelect();
-    updateSuppliersSelect();    // 👈 أضف السطر ده
+    updateSuppliersSelect();
+    renderStock();
+    updateStockSelect();
     checkServicesEmpty();
 }
 
@@ -3225,6 +3258,7 @@ const DATA_KEYS = {
     services: 'sub_services',
     expenses: 'sub_expenses',
     suppliers: 'sub_suppliers',
+    stock: 'sub_stock',
     activityLog: 'sub_activity_log',
     subscriptionHistory: 'sub_subscription_history'
 };
@@ -3247,6 +3281,7 @@ function loadData() {
         window.services = data.services || [];
         window.expenses = data.expenses || [];
         window.suppliers = data.suppliers || [];
+        window.stock = data.stock || [];
         window.activityLog = data.activityLog || [];
         window.subscriptionHistory = data.subscriptionHistory || [];
         migrateOldData();
@@ -3272,6 +3307,26 @@ function migrateOldData() {
             migrated = true;
         }
     });
+    // Migrate old customers with direct email/password to stock reference
+    customers.forEach(c => {
+        if (c.deliveredEmail && !c.stockId) {
+            const existing = stock.find(s => s.email === c.deliveredEmail);
+            if (!existing) {
+                const s = {
+                    id: Date.now() + Math.random(),
+                    email: c.deliveredEmail,
+                    password: c.deliveredPassword || '',
+                    maxUsers: 2,
+                    remainingUses: 0,
+                    notes: ' migrated',
+                    createdAt: c.addedAt || new Date().toISOString()
+                };
+                stock.push(s);
+                c.stockId = s.id;
+                migrated = true;
+            }
+        }
+    });
     if (migrated) { console.log('Data migration done'); saveData(); }
 }
 
@@ -3283,6 +3338,7 @@ function saveData() {
             localStorage.setItem(DATA_KEYS.services, JSON.stringify(services));
             localStorage.setItem(DATA_KEYS.expenses, JSON.stringify(expenses));
             localStorage.setItem(DATA_KEYS.suppliers, JSON.stringify(suppliers));
+            localStorage.setItem(DATA_KEYS.stock, JSON.stringify(stock));
             localStorage.setItem(DATA_KEYS.activityLog, JSON.stringify(activityLog));
             localStorage.setItem(DATA_KEYS.subscriptionHistory, JSON.stringify(subscriptionHistory));
         } catch (err) { showNotification('Error saving data', 'warning'); }
@@ -3628,78 +3684,6 @@ function showCustomerProfile(cid) {
 }
 function closeCustomerProfileModal() { document.getElementById('customerProfileModal').classList.remove('show'); }
 
-// ===================== ENHANCED CUSTOMER FUNCTIONS =====================
-function addCustomer(e) {
-    e.preventDefault();
-    const name = document.getElementById('customerName').value.trim();
-    const source = document.getElementById('customerSource').value;
-    const serviceId = parseInt(document.getElementById('customerService').value);
-    const supplierId = document.getElementById('customerSupplier').value;
-    const costPrice = parseFloat(document.getElementById('customerCostPrice').value) || 0;
-    const sellPrice = parseFloat(document.getElementById('customerSellPrice').value) || 0;
-    const startDate = document.getElementById('startDate').value;
-    const endDate = document.getElementById('endDate').value;
-    const notes = document.getElementById('customerNotes').value.trim();
-    
-    if (services.length === 0) { showNotification('مفيش خدمات', 'warning'); return; }
-    if (!name || !source || !serviceId || !startDate || !endDate) { showNotification('املأ الحقول المطلوبة', 'warning'); return; }
-    
-    const service = services.find(s => s.id === serviceId);
-    const supplier = suppliers.find(s => s.id == supplierId);
-    const customer = {
-        id: Date.now(), name, source, serviceId, serviceName: service.name, serviceIcon: service.icon,
-        price: sellPrice, costPrice, sellPrice, supplierId: supplierId || null, supplierName: supplier ? supplier.name : null,
-        startDate, endDate, notes, status: 'active', addedAt: new Date().toISOString(),
-        subscriptionHistory: [{
-            serviceId, serviceName: service.name, serviceIcon: service.icon, startDate, endDate,
-            costPrice, sellPrice, supplierId: supplierId || null, status: 'active', isRenewal: false,
-            createdAt: new Date().toISOString()
-        }]
-    };
-    customers.push(customer); saveData();
-    logActivity('customer_create', {customerName:name, customerId:customer.id, serviceName:service.name, details:`إضافة ${name}`});
-    showNotification('تم إضافة ' + name, 'success'); playSound('success');
-    resetForm(); renderAll();
-}
-
-function renewCustomer(id) {
-    const c = customers.find(x => x.id === id); if (!c) return;
-    const start = new Date(); const end = new Date(); end.setMonth(end.getMonth()+1);
-    const oldSub = {
-        customerId: c.id, customerName: c.name, serviceId: c.serviceId, serviceName: c.serviceName,
-        serviceIcon: c.serviceIcon, startDate: c.startDate, endDate: c.endDate,
-        costPrice: c.costPrice || c.price * 0.7, sellPrice: c.sellPrice || c.price,
-        supplierId: c.supplierId, phone: c.phone, deliveredEmail: c.deliveredEmail, status: c.status, isRenewal: true, createdAt: new Date().toISOString()
-    };
-    subscriptionHistory.push(oldSub);
-    c.startDate = formatDate(start); c.endDate = formatDate(end); c.status = 'active';
-    c.renewedAt = new Date().toISOString(); c.renewCount = (c.renewCount || 0) + 1;
-    if (!c.subscriptionHistory) c.subscriptionHistory = [];
-    c.subscriptionHistory.push({
-        serviceId: c.serviceId, serviceName: c.serviceName, serviceIcon: c.serviceIcon,
-        startDate: c.startDate, endDate: c.endDate, costPrice: c.costPrice || 0, sellPrice: c.sellPrice || 0,
-        supplierId: c.supplierId, status: 'active', isRenewal: true, createdAt: new Date().toISOString()
-    });
-    saveData(); renderAll();
-    logActivity('subscription_renew', {customerName:c.name, customerId:c.id, serviceName:c.serviceName, details:`تجديد ${c.name}`});
-    showNotification('تم تجديد ' + c.name, 'success'); playSound('success');
-}
-
-function deleteCustomer(id) {
-    const c = customers.find(x => x.id === id); if (!c) return;
-    if (!confirm('حذف العميل؟')) return;
-    const deletedSub = {
-        customerId: c.id, customerName: c.name, serviceId: c.serviceId, serviceName: c.serviceName,
-        serviceIcon: c.serviceIcon, startDate: c.startDate, endDate: c.endDate,
-        costPrice: c.costPrice || 0, sellPrice: c.sellPrice || 0, supplierId: c.supplierId,
-        status: 'deleted', isRenewal: false, createdAt: new Date().toISOString()
-    };
-    subscriptionHistory.push(deletedSub);
-    customers = customers.filter(x => x.id !== id); saveData(); renderAll();
-    logActivity('customer_delete', {customerName:c.name, customerId:id, serviceName:c.serviceName, details:`حذف ${c.name}`});
-    showNotification('تم الحذف', 'success');
-}
-
 // ===================== SORTING: EXPIRY PRIORITY =====================
 function sortCustomersByPriority(list) {
     return [...list].sort((a, b) => {
@@ -3761,7 +3745,11 @@ function buildCustomerTable(list, isDashboard) {
         const supplier = suppliers.find(s => s.id == c.supplierId);
         return `<tr style="${st.status==='completed'||st.status==='expired'?'opacity:0.6;background:rgba(239,68,68,0.05);':''}">
             <td><div class="customer-info" style="cursor:pointer" onclick="showCustomerProfile(${c.id})"><div class="customer-avatar" style="${isRenewed?'background:linear-gradient(135deg,var(--success),#059669);':''}">${isRenewed?'<i class="fas fa-sync-alt"></i>':c.name.charAt(0)}</div><div><div class="customer-name">${c.name} ${isRenewed?'<span style="color:var(--success);font-size:11px;margin-right:5px"><i class="fas fa-redo"></i></span>':''}</div><div class="customer-source">${getSourceIcon(c.source)} ${getSourceName(c.source)}</div></div></div></td>
-            <td><span class="service-tag">${c.serviceIcon} ${c.serviceName}</span></td>
+            <td>
+                <span class="service-tag">${c.serviceIcon} ${c.serviceName}</span>
+                ${c.deliveredEmail ? `<div style="font-size:12px;color:var(--primary);margin-top:4px;"><i class="fas fa-envelope" style="margin-left:4px;"></i>${c.deliveredEmail}</div>` : ''}
+                ${c.deliveredPassword ? `<div style="font-size:12px;color:var(--warning);margin-top:2px;"><i class="fas fa-key" style="margin-left:4px;"></i>${c.deliveredPassword}</div>` : ''}
+            </td>
             ${!isDashboard?`<td>${formatDateArabic(new Date(c.startDate))}</td>`:''}
             <td>${formatDateArabic(new Date(c.endDate))}${daysLeft>0&&st.status!=='completed'?'<br><span style="color:var(--gray);font-size:12px">('+daysLeft+' '+(daysLeft===1?'يوم':'أيام')+')</span>':''}${daysLeft===0&&st.status!=='completed'?'<br><span style="color:var(--warning);font-size:12px">(ينتهي اليوم)</span>':''}${daysLeft<0?'<br><span style="color:var(--danger);font-size:12px">(من '+Math.abs(daysLeft)+')</span>':''}</td>
             ${!isDashboard?`<td>${supplier?supplier.name:'<span style="color:var(--gray)">-</span>'}</td>`:''}
@@ -3814,6 +3802,135 @@ function buildCustomerCards(list, isDashboard) {
     }).join('') + '</div>';
 }
 
+// ===================== STOCK (EMAIL/PASSWORD ACCOUNTS) =====================
+function openStockModal(sid) {
+    const m = document.getElementById('stockModal');
+    const t = document.getElementById('stockModalTitle');
+    const b = document.getElementById('stockSubmitBtn');
+    const idIn = document.getElementById('stockId');
+    if (sid) {
+        const s = stock.find(x => x.id === sid); if (!s) return;
+        t.textContent = 'تعديل حساب'; b.textContent = 'حفظ التعديلات';
+        idIn.value = s.id; document.getElementById('stockEmail').value = s.email;
+        document.getElementById('stockPassword').value = s.password;
+        document.getElementById('stockMaxUsers').value = s.maxUsers;
+        document.getElementById('stockNotes').value = s.notes || '';
+    } else {
+        t.textContent = 'إضافة حساب جديد'; b.textContent = 'إضافة الحساب';
+        idIn.value = ''; document.getElementById('stockEmail').value = '';
+        document.getElementById('stockPassword').value = '';
+        document.getElementById('stockMaxUsers').value = '2';
+        document.getElementById('stockNotes').value = '';
+    }
+    m.classList.add('show');
+}
+function closeStockModal() { document.getElementById('stockModal').classList.remove('show'); }
+
+function addStock(e) {
+    e.preventDefault();
+    const id = document.getElementById('stockId').value;
+    const email = document.getElementById('stockEmail').value.trim();
+    const password = document.getElementById('stockPassword').value;
+    const maxUsers = parseInt(document.getElementById('stockMaxUsers').value);
+    const notes = document.getElementById('stockNotes').value.trim();
+    if (!email || !password) { showNotification('أدخل الإيميل والباسورد', 'warning'); return; }
+    if (id) {
+        const s = stock.find(x => x.id == id);
+        if (s) { s.email = email; s.password = password; s.maxUsers = maxUsers; s.notes = notes; s.updatedAt = new Date().toISOString(); showNotification('تم تعديل الحساب', 'success'); }
+    } else {
+        const s = { id: Date.now(), email, password, maxUsers, remainingUses: maxUsers, notes, createdAt: new Date().toISOString() };
+        stock.push(s);
+        showNotification('تم إضافة الحساب: ' + email, 'success'); playSound('success');
+    }
+    saveData(); renderStock(); updateStockSelect(); closeStockModal();
+}
+
+function deleteStock(id) {
+    const s = stock.find(x => x.id === id); if (!s) return;
+    if (!confirm('حذف الحساب "' + s.email + '"؟')) return;
+    stock = stock.filter(x => x.id !== id);
+    saveData(); renderStock(); updateStockSelect(); showNotification('تم الحذف', 'success');
+}
+
+function getStockStatus(s) {
+    if (s.remainingUses <= 0) return { text: 'تم الانتهاء', class: 'status-expired', available: false };
+    if (s.remainingUses === 1) return { text: s.remainingUses + ' متبقي', class: 'status-expiring', available: true };
+    return { text: s.remainingUses + ' متبقي', class: 'status-active', available: true };
+}
+
+function renderStock() {
+    const c = document.getElementById('stockTableContainer');
+    const s = document.getElementById('stockSearch')?.value?.toLowerCase() || '';
+    const sf = document.getElementById('stockStatusFilter')?.value || 'all';
+    let f = stock;
+    if (s) f = f.filter(x => x.email.toLowerCase().includes(s));
+    if (sf !== 'all') {
+        f = f.filter(x => {
+            const st = getStockStatus(x);
+            return sf === 'available' ? st.available : !st.available;
+        });
+    }
+    if (f.length === 0) {
+        c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📧</div><div class="empty-state-title">لا يوجد حسابات</div><div class="empty-state-text">أضف حسابك الأول في المخزن</div><button class="btn btn-primary" onclick="openStockModal()"><i class="fas fa-plus"></i> إضافة</button></div>';
+    } else {
+        c.innerHTML = '<div class="stock-grid">' + f.map(s => {
+            const st = getStockStatus(s);
+            const usagePercent = Math.round(((s.maxUsers - s.remainingUses) / s.maxUsers) * 100);
+            return `<div class="stock-card ${st.available ? '' : 'finished'}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div class="stock-icon">📧</div>
+                    <div class="action-btns" onclick="event.stopPropagation()">
+                        <button class="action-btn edit" onclick="openStockModal(${s.id})" title="تعديل"><i class="fas fa-edit"></i></button>
+                        <button class="action-btn delete" onclick="deleteStock(${s.id})" title="حذف"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+                <div class="stock-email">${s.email}</div>
+                <div class="stock-password"><i class="fas fa-key"></i> ${s.password}</div>
+                <div class="stock-status-badge ${st.class}"><i class="fas fa-circle" style="font-size:8px"></i> ${st.text}</div>
+                <div class="stock-progress">
+                    <div class="stock-progress-track">
+                        <div class="stock-progress-fill" style="width:${usagePercent}%;background:${st.available ? 'var(--success)' : 'var(--danger)'}"></div>
+                    </div>
+                    <div class="stock-progress-label">${s.maxUsers - s.remainingUses} / ${s.maxUsers} مستخدم</div>
+                </div>
+                ${s.notes ? `<div style="font-size:12px;color:var(--gray);margin-top:8px;"><i class="fas fa-sticky-note" style="margin-left:5px;"></i>${s.notes}</div>` : ''}
+            </div>`;
+        }).join('') + '</div>';
+    }
+    const b = document.getElementById('stockCountBadge');
+    if (b) { b.textContent = stock.length; b.style.display = stock.length > 0 ? 'inline-block' : 'none'; }
+}
+function filterStock() { renderStock(); }
+
+function updateStockSelect() {
+    const sel = document.getElementById('customerStockItem');
+    if (!sel) return;
+    const cv = sel.value;
+    sel.innerHTML = '<option value="">اختر حساب من المخزن</option>';
+    const available = stock.filter(s => getStockStatus(s).available);
+    available.forEach(s => {
+        const o = document.createElement('option');
+        o.value = s.id;
+        o.textContent = s.email + ' (' + s.remainingUses + ' متبقي)';
+        sel.appendChild(o);
+    });
+    if (cv && stock.find(s => s.id == cv && getStockStatus(s).available)) sel.value = cv;
+    const msg = document.getElementById('noStockMsg');
+    if (msg) msg.style.display = available.length === 0 ? 'block' : 'none';
+}
+
+function updateStockPreview() {
+    const sid = document.getElementById('customerStockItem').value;
+    const preview = document.getElementById('stockPreview');
+    if (!sid) { if (preview) preview.style.display = 'none'; return; }
+    const s = stock.find(x => x.id == sid);
+    if (!s) { if (preview) preview.style.display = 'none'; return; }
+    document.getElementById('stockPreviewEmail').textContent = s.email;
+    document.getElementById('stockPreviewPassword').textContent = s.password;
+    document.getElementById('stockPreviewRemaining').textContent = s.remainingUses;
+    preview.style.display = 'block';
+}
+
 // ===================== READY MESSAGE =====================
 function generateMessage() {
     const name = document.getElementById('customerName').value.trim();
@@ -3823,43 +3940,48 @@ function generateMessage() {
     const sellPrice = document.getElementById('customerSellPrice').value;
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
-    const deliveredEmail = document.getElementById('customerDeliveredEmail').value.trim();
-    const deliveredPassword = document.getElementById('customerDeliveredPassword').value.trim();
-    
+    const stockId = document.getElementById('customerStockItem').value;
+
+    let deliveredEmail = '';
+    let deliveredPassword = '';
+    let stockItem = null;
+
+    if (stockId) {
+        stockItem = stock.find(s => s.id == stockId);
+        if (stockItem) {
+            deliveredEmail = stockItem.email;
+            deliveredPassword = stockItem.password;
+        }
+    }
+
     if (!name || !service) {
         showNotification('⚠️ املأ اسم العميل والخدمة الأول', 'warning');
         return;
     }
-    
-    // لو كتب الإيميل بس ونسي الباسورد → اطلب الباسورد
-    if (deliveredEmail && !deliveredPassword) {
-        showNotification('⚠️ اكتب باسورد الإيميل', 'warning');
-        return;
-    }
-    
+
     const serviceName = service ? service.name : 'الخدمة';
     const serviceIcon = service ? service.icon : '📦';
-    
+
     const startArabic = startDate ? formatDateArabic(new Date(startDate)) : '...';
     const endArabic = endDate ? formatDateArabic(new Date(endDate)) : '...';
-    
+
     let message = `👋 مرحباً ${name}!\n\n`;
     message += `✅ تم استلام المبلغ بنجاح\n`;
     message += `💳 المبلغ: ${sellPrice || '...'} ج.م\n\n`;
     message += `📦 الخدمة: ${serviceIcon} ${serviceName}\n`;
     message += `📅 تاريخ البداية: ${startArabic}\n`;
     message += `📅 تاريخ الانتهاء: ${endArabic}\n`;
-    
-    // لو كتب الإيميل والباسورد → ضيفهم للرسالة
+
+    // لو اختار حساب من المخزن → ضيفهم للرسالة
     if (deliveredEmail && deliveredPassword) {
         message += `\n📧 الإيميل: ${deliveredEmail}\n`;
         message += `🔑 الباسورد: ${deliveredPassword}\n`;
         message += `\n⏳ انتظرنا بعض الوقت...\n`;
     }
-    
+
     message += `\n🙏 شكراً لك!\n`;
     message += `\n📞 للاستفسار: [رقمك هنا]`;
-    
+
     document.getElementById('readyMessage').value = message;
     showNotification('✅ تم توليد الرسالة!', 'success');
 }
@@ -4012,6 +4134,30 @@ function exportSuppliersToExcel() {
     XLSX.writeFile(wb, 'Stack_CRM_Suppliers.xlsx');
     
     showNotification('✅ تم تحميل ملف الموردين!', 'success');
+    playSound('success');
+}
+
+function exportStockToExcel() {
+    if (stock.length === 0) {
+        showNotification('⚠️ مفيش حسابات للتصدير', 'warning');
+        return;
+    }
+    const data = stock.map(s => {
+        const st = getStockStatus(s);
+        return {
+            'الإيميل': s.email,
+            'الباسورد': s.password,
+            'عدد المستخدمين': s.maxUsers,
+            'المتبقي': s.remainingUses,
+            'الحالة': st.text,
+            'ملاحظات': s.notes || ''
+        };
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'المخزن');
+    XLSX.writeFile(wb, 'Stack_CRM_Stock.xlsx');
+    showNotification('✅ تم تحميل ملف المخزن!', 'success');
     playSound('success');
 }
 

@@ -3245,7 +3245,150 @@ body {
     .subscription-timeline-item::before { right: -18px; }
 }
 
+/* ===== STOCK SECTION ===== */
+.stock-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+.stock-card {
+    background: var(--glass);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 24px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    cursor: default;
+}
+
+.stock-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+}
+
+.stock-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--success), #059669);
+}
+
+.stock-card.finished::before {
+    background: linear-gradient(90deg, var(--danger), #dc2626);
+}
+
+.stock-card.finished {
+    opacity: 0.7;
+}
+
+.stock-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin-bottom: 16px;
+}
+
+.stock-card.finished .stock-icon {
+    background: linear-gradient(135deg, var(--gray), var(--dark-lighter));
+}
+
+.stock-email {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    direction: ltr;
+    text-align: right;
+    word-break: break-all;
+}
+
+.stock-password {
+    font-size: 14px;
+    color: var(--gray);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    direction: ltr;
+    text-align: right;
+}
+
+.stock-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 15px;
+}
+
+.stock-status-badge.status-active {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+}
+
+.stock-status-badge.status-expiring {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warning);
+}
+
+.stock-status-badge.status-expired {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+}
+
+.stock-progress {
+    margin-top: 10px;
+}
+
+.stock-progress-track {
+    height: 10px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.stock-progress-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.5s ease;
+}
+
+.stock-progress-label {
+    font-size: 12px;
+    color: var(--gray);
+    font-weight: 600;
+    text-align: center;
+}
+
+/* ===== STOCK PREVIEW IN CUSTOMER FORM ===== */
+#stockPreview {
+    animation: fadeIn 0.3s ease;
+}
+
+/* ===== MOBILE RESPONSIVE FOR STOCK ===== */
+@media (max-width: 768px) {
+    .stock-grid { grid-template-columns: 1fr; }
+    .stock-card { padding: 18px; }
+    .stock-icon { width: 50px; height: 50px; font-size: 22px; }
+    .stock-email { font-size: 14px; }
+}
+
 /* ===== PERFORMANCE: REDUCE ANIMATIONS ===== */
+
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.01ms !important;
