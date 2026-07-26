@@ -1280,16 +1280,42 @@ function showSection(sectionId) {
         }
     });
     
-    // ✅ حدث البيانات حسب القسم
+    // ✅ حدث البيانات حسب القسم + تصفير الفلاتر لما تدخل القسم
     if (sectionId === 'dashboard') renderDashboard();
-    if (sectionId === 'customers') renderCustomers();
+    
+    if (sectionId === 'customers') {
+        // تصفير الفلاتر عشان يظهروا كلهم
+        const searchInput = document.getElementById('customerSearch');
+        const statusFilter = document.getElementById('statusFilter');
+        if (searchInput) searchInput.value = '';
+        if (statusFilter) statusFilter.value = 'all';
+        renderCustomers();
+    }
+    
     if (sectionId === 'services') {
         console.log('🔄 تحديث قسم الخدمات...');
-        renderServices(); // ← حدث فوراً
+        renderServices();
     }
+    
+    if (sectionId === 'suppliers') {
+        const sSearch = document.getElementById('supplierSearch');
+        const sFilter = document.getElementById('supplierStatusFilter');
+        if (sSearch) sSearch.value = '';
+        if (sFilter) sFilter.value = 'all';
+        renderSuppliers();
+    }
+    
+    if (sectionId === 'stock') {
+        const stSearch = document.getElementById('stockSearch');
+        const stFilter = document.getElementById('stockStatusFilter');
+        if (stSearch) stSearch.value = '';
+        if (stFilter) stFilter.value = 'all';
+        renderStock();
+    }
+    
     if (sectionId === 'expiring') renderExpiring();
     if (sectionId === 'finance') renderFinance();
-    if (sectionId === 'stock') renderStock();
+    if (sectionId === 'activity-log') renderActivityLog();
     
     // ✅ حدث العدادات
     updateBadges();
@@ -1948,181 +1974,42 @@ function renderCustomers() {
     
     let filtered = customers;
     if (search) {
-        filtered = filtered.filter(c => c.name.toLowerCase().includes(search) || c.serviceName.toLowerCase().includes(search));
+        filtered = filtered.filter(c => 
+            c.name.toLowerCase().includes(search) || 
+            c.serviceName.toLowerCase().includes(search)
+        );
     }
     if (statusFilter !== 'all') {
         filtered = filtered.filter(c => getStatus(c).status === statusFilter);
     }
     
+    filtered = sortCustomersByPriority(filtered);
+    
+    // عداد يوضّح إجمالي / المعروض
+    const counterHTML = `
+        <div style="margin-bottom: 15px; padding: 12px 18px; background: rgba(99,102,241,0.08); border-radius: 14px; border: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <span style="font-weight: 700; color: var(--primary); font-size: 15px;">
+                <i class="fas fa-users"></i> إجمالي العملاء: ${customers.length}
+            </span>
+            <span style="color: var(--gray); font-size: 14px; font-weight: 600;">
+                ${filtered.length === customers.length 
+                    ? 'معروض: الكل ✓' 
+                    : `معروض: <span style="color: var(--warning);">${filtered.length}</span> من ${customers.length} (فلتر نشط)`}
+            </span>
+        </div>
+    `;
+    
     if (filtered.length === 0) {
-        container.innerHTML = `
+        container.innerHTML = counterHTML + `
             <div class="empty-state">
                 <div class="empty-state-icon">📋</div>
-                <div class="empty-state-title">لا يوجد عملاء</div>
-                <div class="empty-state-text">أضف عميلك الأول الآن</div>
+                <div class="empty-state-title">لا يوجد عملاء مطابقين</div>
+                <div class="empty-state-text">جرب تغيير الفلتر أو البحث</div>
             </div>`;
         return;
     }
     
-    // ===== DESKTOP TABLE =====
-    const tableHTML = `
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>العميل</th>
-                    <th>الخدمة</th>
-                    <th>تاريخ البداية</th>
-                    <th>تاريخ الانتهاء</th>
-                    <th>الحالة</th>
-                    <th>الإجراءات</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${filtered.map(c => {
-                    const st = getStatus(c);
-                    const end = new Date(c.endDate);
-                    end.setHours(0,0,0,0);
-                    const today = new Date();
-                    today.setHours(0,0,0,0);
-                    const daysLeft = Math.round((end - today) / (1000*60*60*24));
-                    
-                    return `
-                    <tr>
-                        <td>
-                            <div class="customer-info">
-                                <div class="customer-avatar">${c.name.charAt(0)}</div>
-                                <div>
-                                    <div class="customer-name">${c.name}</div>
-                                    <div class="customer-source">${getSourceIcon(c.source)} ${getSourceName(c.source)}</div>
-            </div></div></td>
-            <td>
-                ${c.phone ? `<div style="font-size:13px;"><i class="fas fa-phone" style="color:var(--success);margin-left:5px;"></i>${c.phone}</div>` : ''}
-                ${c.deliveredEmail ? `<div style="font-size:12px;color:var(--gray);margin-top:3px;"><i class="fas fa-envelope" style="color:var(--primary);margin-left:5px;"></i>${c.deliveredEmail}</div>` : ''}
-                ${!c.phone && !c.deliveredEmail ? '<span style="color:var(--gray);font-size:12px;">-</span>' : ''}
-            </td>
-            <td><span class="service-tag">${c.serviceIcon} ${c.serviceName}</span></td>${formatDateArabic(new Date(c.startDate))}</td>
-                        <td>${formatDateArabic(new Date(c.endDate))} ${daysLeft > 0 ? '<span style="color: var(--gray); font-size: 12px;">(' + daysLeft + ' ' + (daysLeft === 1 ? 'يوم' : 'أيام') + ')</span>' : daysLeft === 0 ? '<span style="color: var(--warning); font-size: 12px;">(ينتهي اليوم)</span>' : '<span style="color: var(--danger); font-size: 12px;">(انتهى)</span>'}</td>
-                        <td><span class="status-badge ${st.class}">${st.text}</span></td>
-                        <td>
-                            <div class="action-btns">
-                                <button class="action-btn renew" onclick="renewCustomer(${c.id})" title="تجديد"><i class="fas fa-sync-alt"></i></button>
-                                <button class="action-btn delete" onclick="deleteCustomer(${c.id})" title="حذف"><i class="fas fa-trash"></i></button>
-                            </div>
-                        </td>
-                    </tr>`;
-                }).join('')}
-            </tbody>
-        </table>`;
-    
-    // ===== MOBILE COLLAPSIBLE CARDS =====
-    const cardsHTML = `
-        <div class="customers-mobile-cards">
-            ${filtered.map(c => {
-                const st = getStatus(c);
-                const end = new Date(c.endDate);
-                end.setHours(0,0,0,0);
-                const today = new Date();
-                today.setHours(0,0,0,0);
-                const daysLeft = Math.round((end - today) / (1000*60*60*24));
-                const isRenewed = c.renewedAt && c.addedAt && new Date(c.renewedAt) > new Date(c.addedAt);
-                
-                let daysClass = 'active';
-                let daysText = '';
-                if (daysLeft > 0) {
-                    daysText = daysLeft + ' ' + (daysLeft === 1 ? 'يوم متبقي' : 'أيام متبقية');
-                    daysClass = 'active';
-                } else if (daysLeft === 0) {
-                    daysText = 'ينتهي اليوم!';
-                    daysClass = 'expiring';
-                } else {
-                    daysText = 'انتهى من ' + Math.abs(daysLeft) + ' ' + (Math.abs(daysLeft) === 1 ? 'يوم' : 'أيام');
-                    daysClass = 'expired';
-                }
-                
-                return `
-                <div class="customer-mobile-card status-${st.status}" onclick="toggleCard(this, event)" data-customer-id="${c.id}">
-                    
-                    <!-- COLLAPSED HEADER (always visible) -->
-                    <div class="customer-card-header">
-                        <div class="customer-card-avatar ${isRenewed ? 'renewed' : ''}">
-                            ${isRenewed ? '<i class="fas fa-redo"></i>' : c.name.charAt(0)}
-                        </div>
-                        <div class="customer-card-info">
-                            <div class="customer-card-name">
-                                ${c.name}
-                                ${isRenewed ? '<span class="renew-badge"><i class="fas fa-redo"></i> تم التجديد</span>' : ''}
-                            </div>
-                            <div class="customer-card-service">
-                                <span class="service-icon">${c.serviceIcon}</span>
-                                ${c.serviceName}
-                            </div>
-                        </div>
-                        <div class="customer-card-meta">
-                            <div class="customer-card-price">${c.price || 0} ج.م</div>
-                            <div class="customer-card-status-compact status-${st.status}">
-                                <i class="fas fa-circle" style="font-size: 6px;"></i>
-                                ${st.text.split(' ')[0]}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="customer-card-expand">
-                        <i class="fas fa-chevron-down"></i>
-                    </div>
-                    
-                    <!-- EXPANDABLE BODY -->
-                    <div class="customer-card-body" onclick="event.stopPropagation()">
-                        <div class="customer-card-field">
-                            <div class="customer-card-label">الحالة</div>
-                            <div class="customer-card-value days-left ${daysClass}">${daysText}</div>
-                        </div>
-                        
-                        <div class="customer-card-field">
-                            <div class="customer-card-label">المصدر</div>
-                            <div class="customer-card-value">
-                                <span class="customer-card-source-icon">${getSourceIcon(c.source)}</span>
-                                ${getSourceName(c.source)}
-                            </div>
-                        </div>
-                        
-                        <div class="customer-card-field">
-                            <div class="customer-card-label">تاريخ البداية</div>
-                            <div class="customer-card-value">${formatDateArabic(new Date(c.startDate))}</div>
-                        </div>
-                        
-                        <div class="customer-card-field">
-                            <div class="customer-card-label">تاريخ الانتهاء</div>
-                            <div class="customer-card-value">${formatDateArabic(new Date(c.endDate))}</div>
-                        </div>
-                        
-                        ${c.notes ? `
-                        <div class="customer-card-field full-width">
-                            <div class="customer-card-label">ملاحظات</div>
-                            <div class="customer-card-value" style="color: var(--gray); font-size: 13px;">${c.notes}</div>
-                        </div>
-                        ` : ''}
-                    </div>
-                    
-                    <!-- EXPANDABLE FOOTER -->
-                    <div class="customer-card-footer" onclick="event.stopPropagation()">
-                        <span class="customer-card-status status-${st.status}">
-                            <i class="fas fa-circle" style="font-size: 8px;"></i>
-                            ${st.text}
-                        </span>
-                        <div class="customer-card-actions">
-                            <button class="action-btn renew" onclick="renewCustomer(${c.id})" title="تجديد الاشتراك">
-                                <i class="fas fa-sync-alt"></i>
-                            </button>
-                            <button class="action-btn delete" onclick="deleteCustomer(${c.id})" title="حذف العميل">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>`;
-            }).join('')}
-        </div>`;
-    
-    container.innerHTML = tableHTML + cardsHTML;
+    container.innerHTML = counterHTML + buildCustomerTable(filtered, false) + buildCustomerCards(filtered, false);
 }
 
 function renderServices() {
