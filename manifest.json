@@ -1,6 +1,6 @@
 {
-  "name": "Stack Manager",
-  "short_name": "Stack",
+  "name": "Tamm Manager",
+  "short_name": "Tamm",
   "description": "نظام إدارة الاشتراكات",
   "start_url": "/",
   "display": "standalone",
