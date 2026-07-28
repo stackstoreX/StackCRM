@@ -40,7 +40,7 @@ function saveAdminSecretCode(code) {
 }
 
 function getAdminSecretCode() {
-    return localStorage.getItem(ADMIN_SECRET_CODE_KEY) || 'STACK9';
+    return localStorage.getItem(ADMIN_SECRET_CODE_KEY) || 'TAMM9';
 }
 
 function saveAdminSecretCodeFromSettings() {
