@@ -2999,10 +2999,10 @@ function migratePurchaseExpenses() {
 
 // ===================== FINANCE RENDERING =====================
 function renderFinance() {
-    const totalRevenue = customers.reduce((sum, c) => sum + (parseFloat(c.sellPrice) || c.price || 0), 0);
     const totalCost = customers.reduce((sum, c) => sum + (parseFloat(c.costPrice) || 0), 0);
     const totalExpensesVal = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-    const totalExpenses = totalCost + totalExpensesVal;
+    const totalRevenue = customers.reduce((sum, c) => sum + (parseFloat(c.sellPrice) || c.price || 0), 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     const netProfit = totalRevenue - totalExpenses;
     const profitPercentage = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
     
@@ -3654,8 +3654,8 @@ function renderDashboard() {
     const revenue = customers.reduce((sum,c) => sum+(parseFloat(c.sellPrice)||c.price||0),0);
     document.getElementById('totalRevenue').textContent = revenue.toLocaleString() + ' ج.م';
     document.getElementById('totalSuppliers').textContent = suppliers.length;
-    const totalCost = customers.reduce((sum,c) => sum+(parseFloat(c.costPrice)||0),0);
-    const totalExp = expenses.reduce((sum,e) => sum+(e.amount||0),0);
+    const totalExp = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    document.getElementById('totalProfit').textContent = (revenue - totalExp).toLocaleString() + ' ج.م';
     document.getElementById('totalProfit').textContent = (revenue-totalCost-totalExp).toLocaleString() + ' ج.م';
     
     const sorted = sortCustomersByPriority(customers).slice(0, 10);
