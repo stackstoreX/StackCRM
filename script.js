@@ -1492,6 +1492,21 @@ function addCustomer(e) {
         if (!stockItem) { showNotification('الحساب مش موجود', 'warning'); return; }
         if (stockItem.remainingUses <= 0) { showNotification('الحساب ' + stockItem.email + ' خلص! اختار حساب تاني', 'warning'); return; }
         stockItem.remainingUses -= 1;
+            // ✅ أضف مصروف الشراء تلقائياً
+    const purchaseExpense = {
+        id: Date.now() + Math.random(),
+        serviceId: serviceId,
+        serviceName: service.name,
+        serviceIcon: service.icon,
+        desc: `شراء من المورد - ${supplier ? supplier.name : 'غير محدد'} (${name})`,
+        amount: costPrice,
+        date: startDate || formatDate(new Date()),
+        notes: `مصروف شراء تلقائي - عميل: ${name}`,
+        customerId: customer.id,
+        isAutoPurchase: true
+    };
+    expenses.push(purchaseExpense);
+    saveExpenses();
         saveData();
     }
 
@@ -1565,10 +1580,14 @@ function updatePrice() {
 
 function deleteCustomer(id) {
     if (confirm('هل أنت متأكد من حذف هذا العميل؟')) {
+        // ✅ امسح المصروف المرتبطة بالعميل
+        expenses = expenses.filter(e => e.customerId !== id);
+        saveExpenses();
+        
         customers = customers.filter(c => c.id !== id);
         saveData();
         renderAll();
-        showNotification('🗑️ تم حذف العميل', 'success');
+        showNotification('🗑️ تم حذف العميل والمصروف المرتبط', 'success');
     }
 }
 
@@ -2942,10 +2961,48 @@ function saveExpenses() {
     localStorage.setItem('sub_expenses', JSON.stringify(expenses));
 }
 
+// ===================== AUTO PURCHASE EXPENSES =====================
+function migratePurchaseExpenses() {
+    const migratedFlag = localStorage.getItem('sub_purchase_expenses_migrated_v2');
+    if (migratedFlag) return;
+    
+    let addedCount = 0;
+    customers.forEach(c => {
+        if (c.costPrice && parseFloat(c.costPrice) > 0) {
+            // شيك لو فيه مصروف موجودة بالفعل لهذا العميل
+            const exists = expenses.some(e => e.customerId === c.id && e.isAutoPurchase);
+            if (!exists) {
+                const supplier = suppliers.find(s => s.id == c.supplierId);
+                expenses.push({
+                    id: Date.now() + Math.random(),
+                    serviceId: c.serviceId,
+                    serviceName: c.serviceName || 'خدمة',
+                    serviceIcon: c.serviceIcon || '📦',
+                    desc: `شراء من المورد - ${supplier ? supplier.name : 'غير محدد'} (${c.name})`,
+                    amount: parseFloat(c.costPrice),
+                    date: c.startDate || formatDate(new Date()),
+                    notes: `مصروف شراء تلقائي - عميل: ${c.name}`,
+                    customerId: c.id,
+                    isAutoPurchase: true
+                });
+                addedCount++;
+            }
+        }
+    });
+    
+    if (addedCount > 0) {
+        saveExpenses();
+        console.log(`✅ تم ترحيل ${addedCount} مصروف شراء للعملاء القدام`);
+    }
+    localStorage.setItem('sub_purchase_expenses_migrated_v2', 'true');
+}
+
 // ===================== FINANCE RENDERING =====================
 function renderFinance() {
-    const totalRevenue = customers.reduce((sum, c) => sum + (c.price || 0), 0);
-    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const totalRevenue = customers.reduce((sum, c) => sum + (parseFloat(c.sellPrice) || c.price || 0), 0);
+    const totalCost = customers.reduce((sum, c) => sum + (parseFloat(c.costPrice) || 0), 0);
+    const totalExpensesVal = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const totalExpenses = totalCost + totalExpensesVal;
     const netProfit = totalRevenue - totalExpenses;
     const profitPercentage = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
     
@@ -2980,7 +3037,7 @@ function renderFinance() {
                     <tr>
                         <th>الخدمة</th>
                         <th>الوصف</th>
-                        <th>المبلغ</th>
+                        <th>المبلغ</tثh>
                         <th>التاريخ</th>
                         <th>إجراء</th>
                     </tr>
@@ -2989,7 +3046,9 @@ function renderFinance() {
                     ${expenses.slice().reverse().map(e => `
                         <tr>
                             <td><span class="service-tag">${e.serviceIcon || '📦'} ${e.serviceName || e.desc}</span></td>
-                            <td style="color: var(--gray); font-size: 13px;">${e.desc !== e.serviceName ? e.desc : '-'} ${e.notes ? '<br><span style="font-size: 11px; opacity: 0.7;">' + e.notes + '</span>' : ''}</td>
+                            <td style="color: var(--gray); font-size: 13px;">
+    ${e.isAutoPurchase ? '<span style="color:var(--warning);font-size:11px;">[تلقائي]</span> ' : ''}
+    ${e.desc !== e.serviceName ? e.desc : '-'} ${e.notes ? '<br><span style="font-size: 11px; opacity: 0.7;">' + e.notes + '</span>' : ''}</td>
                             <td class="expense-amount">-${e.amount.toLocaleString()} ج.م</td>
                             <td>${formatDateArabic(new Date(e.date))}</td>
                             <td>
@@ -3177,6 +3236,8 @@ function loadData() {
         window.customers = []; window.services = []; window.expenses = [];
         window.suppliers = []; window.activityLog = []; window.subscriptionHistory = [];
     }
+        // شغل migration لما البيانات تحمل
+    setTimeout(() => migratePurchaseExpenses(), 500);
 }
 
 function migrateOldData() {
