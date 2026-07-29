@@ -3654,9 +3654,11 @@ function renderDashboard() {
     const revenue = customers.reduce((sum,c) => sum+(parseFloat(c.sellPrice)||c.price||0),0);
     document.getElementById('totalRevenue').textContent = revenue.toLocaleString() + ' ج.م';
     document.getElementById('totalSuppliers').textContent = suppliers.length;
+    
+    // ✅ FIX: عرّف totalCost واستخدم سطر واحد بس
+    const totalCost = customers.reduce((sum, c) => sum + (parseFloat(c.costPrice) || 0), 0);
     const totalExp = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-    document.getElementById('totalProfit').textContent = (revenue - totalExp).toLocaleString() + ' ج.م';
-    document.getElementById('totalProfit').textContent = (revenue-totalCost-totalExp).toLocaleString() + ' ج.م';
+    document.getElementById('totalProfit').textContent = (revenue - totalCost - totalExp).toLocaleString() + ' ج.م';
     
     const sorted = sortCustomersByPriority(customers).slice(0, 10);
     const container = document.getElementById('recentCustomers');
@@ -4150,27 +4152,24 @@ function exportFinanceToExcel() {
 }
 
 // ===================== DATA TRANSFER (NO SERVER) =====================
+// ===================== DATA TRANSFER (LZ-String + File) =====================
 function exportAllData() {
     const exportArea = document.getElementById('exportDataArea');
     const copyBtn = document.getElementById('copyExportBtn');
-
     if (!exportArea || !copyBtn) return;
 
     try {
-        // Collect all app data from localStorage
         const data = {};
         const keys = [
             'sub_customers', 'sub_services', 'sub_expenses', 'sub_suppliers',
-            'sub_activity_log', 'sub_subscription_history', 'sub_settings',
+            'sub_stock', 'sub_activity_log', 'sub_subscription_history', 'sub_settings',
             'sub_merchant_name', 'sub_sound', 'sub_push_enabled',
-            'sub_dismissed_notifications', 'sub_played_sounds'
+            'sub_dismissed_notifications', 'sub_played_sounds',
+            'sub_trial_start', 'sub_activated', 'sub_admin_secret'
         ];
-
         keys.forEach(key => {
             const value = localStorage.getItem(key);
-            if (value !== null) {
-                data[key] = value;
-            }
+            if (value !== null) data[key] = value;
         });
 
         if (Object.keys(data).length === 0) {
@@ -4178,24 +4177,149 @@ function exportAllData() {
             return;
         }
 
-        // Convert to JSON then Base64
+        // ✅ LZ-String ضغط أقوى من Base64 بكتير
         const jsonStr = JSON.stringify(data);
-        const compressed = btoa(unescape(encodeURIComponent(jsonStr)));
+        const compressed = LZString.compressToEncodedURIComponent(jsonStr);
 
         exportArea.value = compressed;
         exportArea.style.display = 'block';
         copyBtn.style.display = 'block';
 
-        showNotification('✅ تم تصدير ' + Object.keys(data).length + ' عناصر! انسخ الكود دلوقتي', 'success');
+        showNotification('✅ تم الضغط! الحجم: ' + compressed.length + ' حرف (أصغر بكتير من قبل)', 'success');
         playSound('success');
-
-        // Auto-select for easy copying
         exportArea.select();
 
     } catch (err) {
         console.error('Export error:', err);
         showNotification('❌ حصل خطأ في التصدير', 'danger');
     }
+}
+
+function copyExportCode() {
+    const exportArea = document.getElementById('exportDataArea');
+    if (!exportArea || !exportArea.value) {
+        showNotification('⚠️ مفيش كود للنسخ', 'warning');
+        return;
+    }
+    exportArea.select();
+    document.execCommand('copy');
+    showNotification('📋 تم نسخ الكود المضغوط!', 'success');
+    playSound('success');
+}
+
+function importAllData() {
+    const importArea = document.getElementById('importDataArea');
+    const statusEl = document.getElementById('importStatus');
+
+    if (!importArea || !importArea.value.trim()) {
+        showNotification('⚠️ الصق الكود الأول', 'warning');
+        return;
+    }
+
+    try {
+        const compressed = importArea.value.trim();
+        let jsonStr = null;
+
+        // ✅ جرب LZ-String الأول
+        if (typeof LZString !== 'undefined') {
+            jsonStr = LZString.decompressFromEncodedURIComponent(compressed);
+        }
+
+        // ✅ لو فشل، جرب الطريقة القديمة (Base64) للتوافقية
+        if (!jsonStr) {
+            jsonStr = decodeURIComponent(escape(atob(compressed)));
+        }
+
+        const data = JSON.parse(jsonStr);
+        if (!data || typeof data !== 'object') throw new Error('Invalid format');
+
+        const keysCount = Object.keys(data).length;
+        if (keysCount === 0) {
+            showNotification('⚠️ الكود فاضي', 'warning');
+            return;
+        }
+
+        if (!confirm('⚠️ هيتم استبدال كل البيانات الحالية. متأكد؟')) return;
+
+        Object.entries(data).forEach(([key, value]) => {
+            localStorage.setItem(key, value);
+        });
+
+        if (statusEl) {
+            statusEl.textContent = '✅ تم استيراد ' + keysCount + ' عناصر! جاري التحديث...';
+            statusEl.style.color = 'var(--success)';
+            statusEl.style.display = 'block';
+        }
+        showNotification('✅ تم الاستيراد! الصفحة هتتحدث...', 'success');
+        playSound('success');
+        setTimeout(() => location.reload(), 1500);
+
+    } catch (err) {
+        console.error('Import error:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ الكود غير صحيح أو تالف!';
+            statusEl.style.color = 'var(--danger)';
+            statusEl.style.display = 'block';
+        }
+        showNotification('❌ الكود غير صحيح! تأكد من نسخه كامل', 'danger');
+        playSound('alert');
+    }
+}
+
+// ✅ تصدير/استيراب الملف (أسهل للبيانات الكبيرة)
+function exportToFile() {
+    const data = {};
+    const keys = [
+        'sub_customers', 'sub_services', 'sub_expenses', 'sub_suppliers',
+        'sub_stock', 'sub_activity_log', 'sub_subscription_history',
+        'sub_settings', 'sub_merchant_name', 'sub_admin_secret'
+    ];
+    keys.forEach(key => {
+        const v = localStorage.getItem(key);
+        if (v !== null) data[key] = v;
+    });
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tamm_backup_' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showNotification('✅ تم تحميل ملف النسخ الاحتياطي', 'success');
+    playSound('success');
+}
+
+function importFromFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (!data || typeof data !== 'object') throw new Error('Invalid file');
+
+            if (!confirm('⚠️ هيتم استبدال كل البيانات الحالية بالملف الجديد. متأكد؟')) return;
+
+            Object.entries(data).forEach(([key, value]) => {
+                localStorage.setItem(key, value);
+            });
+
+            showNotification('✅ تم استيراد الملف! جاري التحديث...', 'success');
+            playSound('success');
+            setTimeout(() => location.reload(), 1500);
+
+        } catch (err) {
+            showNotification('❌ الملف غير صالح أو تالف', 'danger');
+            playSound('alert');
+        }
+    };
+    reader.readAsText(file);
+    input.value = ''; // reset
 }
 
 function copyExportCode() {

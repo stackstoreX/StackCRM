@@ -996,39 +996,54 @@
 
                 
                 <!-- Data Transfer Section -->
-                <div class="form-group" style="border: 2px solid var(--info); border-radius: 12px; padding: 15px; margin-bottom: 20px; margin-top: 25px;">
-                    <label class="form-label" style="color: var(--info);">
-                        <i class="fas fa-exchange-alt"></i> نقل البيانات بين الأجهزة
-                    </label>
-                    <p style="color: var(--gray); font-size: 12px; margin: 8px 0;">
-                        انقل كل بياناتك من جهاز لآخر بدون سيرفر. اضغط تصدير وانسخ الكود والصقه في الجهاز التاني.
-                    </p>
-
-                    <!-- Export -->
-                    <div style="margin-bottom: 15px;">
-                        <button type="button" class="btn btn-primary" onclick="exportAllData()" style="width: 100%; margin-bottom: 10px;">
-                            <i class="fas fa-file-export"></i> تصدير جميع البيانات
-                        </button>
-                        <textarea class="form-input" id="exportDataArea" rows="4" readonly placeholder="هنا هيظهر كود البيانات... اضغط تصدير الأول" style="font-size: 11px; font-family: monospace; direction: ltr; text-align: left; background: rgba(0,0,0,0.2); display: none;"></textarea>
-                        <button type="button" class="btn btn-success" id="copyExportBtn" onclick="copyExportCode()" style="width: 100%; margin-top: 8px; display: none;">
-                            <i class="fas fa-copy"></i> نسخ الكود
-                        </button>
-                    </div>
-
-                    <div style="border-top: 1px dashed var(--glass-border); margin: 15px 0;"></div>
-
-                    <!-- Import -->
-                    <div>
-                        <label class="form-label" style="font-size: 13px; color: var(--gray);">
-                            <i class="fas fa-file-import"></i> استيراد البيانات (في الجهاز الجديد)
-                        </label>
-                        <textarea class="form-input" id="importDataArea" rows="4" placeholder="الصق كود البيانات هنا..." style="font-size: 11px; font-family: monospace; direction: ltr; text-align: left; margin-bottom: 10px;"></textarea>
-                        <button type="button" class="btn btn-success" onclick="importAllData()" style="width: 100%;">
-                            <i class="fas fa-download"></i> استيراد البيانات
-                        </button>
-                        <p id="importStatus" style="margin-top: 8px; font-size: 13px; display: none;"></p>
-                    </div>
-                </div>
+        <div class="form-group" style="border: 2px solid var(--info); border-radius: 12px; padding: 15px; margin-bottom: 20px; margin-top: 25px;">
+            <label class="form-label" style="color: var(--info);">
+                <i class="fas fa-exchange-alt"></i> نقل البيانات بين الأجهزة
+            </label>
+            <p style="color: var(--gray); font-size: 12px; margin: 8px 0;">
+                انقل بياناتك بضغطة زر. الكود المضغوط أصغر بكتير من قبل.
+            </p>
+        
+            <!-- أزرار الملف (أسهل للبيانات الكبيرة) -->
+            <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-primary" onclick="exportToFile()" style="flex:1;min-width:140px;">
+                    <i class="fas fa-file-download"></i> تحميل ملف JSON
+                </button>
+                <label class="btn btn-success" style="flex:1;min-width:140px;cursor:pointer;text-align:center;">
+                    <i class="fas fa-file-upload"></i> رفع ملف JSON
+                    <input type="file" accept=".json" onchange="importFromFile(this)" style="display:none;">
+                </label>
+            </div>
+        
+            <div style="border-top: 1px dashed var(--glass-border); margin: 15px 0; text-align:center;">
+                <span style="color:var(--gray);font-size:12px;">أو استخدم الكود المضغوط</span>
+            </div>
+        
+            <!-- Export -->
+            <div style="margin-bottom: 15px;">
+                <button type="button" class="btn btn-primary" onclick="exportAllData()" style="width: 100%; margin-bottom: 10px;">
+                    <i class="fas fa-file-export"></i> تصدير كود مضغوط
+                </button>
+                <textarea class="form-input" id="exportDataArea" rows="3" readonly placeholder="هنا هيظهر الكود المضغوط..." style="font-size: 12px; font-family: monospace; direction: ltr; text-align: left; background: rgba(0,0,0,0.2); display: none;"></textarea>
+                <button type="button" class="btn btn-success" id="copyExportBtn" onclick="copyExportCode()" style="width: 100%; margin-top: 8px; display: none;">
+                    <i class="fas fa-copy"></i> نسخ الكود
+                </button>
+            </div>
+        
+            <div style="border-top: 1px dashed var(--glass-border); margin: 15px 0;"></div>
+        
+            <!-- Import -->
+            <div>
+                <label class="form-label" style="font-size: 13px; color: var(--gray);">
+                    <i class="fas fa-file-import"></i> استيراد من كود مضغوط
+                </label>
+                <textarea class="form-input" id="importDataArea" rows="3" placeholder="الصق الكود المضغوط هنا..." style="font-size: 12px; font-family: monospace; direction: ltr; text-align: left; margin-bottom: 10px;"></textarea>
+                <button type="button" class="btn btn-success" onclick="importAllData()" style="width: 100%;">
+                    <i class="fas fa-download"></i> استيراد الكود
+                </button>
+                <p id="importStatus" style="margin-top: 8px; font-size: 13px; display: none;"></p>
+            </div>
+        </div>
 
                 <!-- Admin Access Section (Hidden by default) -->
                 <div class="admin-access-section" id="adminAccessSection">
@@ -1103,6 +1118,7 @@
         <i class="fas fa-bell-slash" id="pushIcon"></i>
     </button>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
     <script src="script.js?v=4.0.0"></script>
 
     <script>
